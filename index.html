@@ -88,8 +88,8 @@ svg.ico{width:16px;height:16px;flex:0 0 auto;display:block}
   backdrop-filter:blur(6px);transition:background .15s,color .15s
 }
 .leaflet-control-zoom a:hover{background:rgba(240,166,58,.16)!important;color:#FFD28A!important}
-.leaflet-bar a:first-child{border-radius:7px 7px 0 0!important}
-.leaflet-bar a:last-child{border-radius:0 0 7px 7px!important}
+.leaflet-bar a:first-child{border-radius:10px 10px 0 0!important}
+.leaflet-bar a:last-child{border-radius:0 0 10px 10px!important}
 /* 底图上禁止出现任何文字（卫星影像本身无标注；路网用的是无文字透明叠层） */
 .leaflet-tooltip.poi-tip{
   background:rgba(9,14,19,.92);border:1px solid var(--line);color:var(--fg);
@@ -110,7 +110,7 @@ svg.ico{width:16px;height:16px;flex:0 0 auto;display:block}
    ========================================================================== */
 #mask{
   position:fixed;inset:0;pointer-events:none;z-index:800;
-  background:rgba(7,12,17,.97);
+  background:#070C11;   /* 完全不透明：圆外不允许透出任何影像信息 */
   -webkit-mask-image:radial-gradient(circle at var(--cx) var(--cy),
       transparent 0, transparent calc(var(--r) - 1px), #000 var(--r));
           mask-image:radial-gradient(circle at var(--cx) var(--cy),
@@ -164,17 +164,20 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .hud-brand span{font-family:var(--serif);font-weight:700;font-size:15px;letter-spacing:.08em;white-space:nowrap}
 .hud-sep{width:1px;height:16px;background:var(--line);flex:0 0 auto}
 .hud-item{
-  font-size:11.5px;color:var(--fg-2);white-space:nowrap;display:flex;align-items:baseline;gap:5px
+  font-size:11.5px;color:var(--fg-2);white-space:nowrap;display:flex;align-items:baseline;gap:5px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+  border-radius:999px;padding:3px 10px
 }
 .hud-item b{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--fg)}
 .hud-item b.amber{color:var(--amber)}
 .hud-right{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .icon-btn{
   width:32px;height:32px;display:grid;place-items:center;cursor:pointer;
-  background:rgba(11,17,23,.8);border:1px solid var(--line);border-radius:7px;
-  color:var(--fg-2);transition:color .15s,border-color .15s,background .15s
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;
+  color:var(--fg-2);transition:all .18s cubic-bezier(.2,.7,.3,1)
 }
-.icon-btn:hover{color:var(--amber);border-color:var(--amber-soft);background:rgba(240,166,58,.1)}
+.icon-btn:hover{color:var(--amber);border-color:var(--amber-soft);background:rgba(240,166,58,.12);transform:translateY(-1px)}
+.icon-btn:active{transform:translateY(0)}
 
 /* ============================================================================
    [05] 右侧情报面板（z-index 1100） / 移动端 ≤900px 收为底部抽屉
@@ -182,22 +185,22 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 #intel{
   position:fixed;top:58px;right:12px;width:290px;max-height:calc(100vh - 76px);
   z-index:1100;display:flex;flex-direction:column;
-  background:var(--panel);backdrop-filter:blur(11px);
-  border:1px solid var(--line);border-radius:11px;
+  background:rgba(10,15,20,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:16px;
   box-shadow:0 18px 46px rgba(0,0,0,.5);
   overflow:hidden;transition:transform .32s cubic-bezier(.4,0,.2,1)
 }
 .intel-head{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:10px 12px;border-bottom:1px solid var(--line);flex:0 0 auto
+  padding:12px 14px;border-bottom:1px solid var(--line);flex:0 0 auto
 }
 .intel-head .t{font-size:12px;letter-spacing:.2em;color:var(--amber);font-weight:500}
 #intel-status{font-size:10.5px;color:var(--fg-3);font-family:var(--mono);text-align:right}
-.intel-scroll{overflow-y:auto;overflow-x:hidden;padding:9px;-webkit-overflow-scrolling:touch}
+.intel-scroll{overflow-y:auto;overflow-x:hidden;padding:8px;-webkit-overflow-scrolling:touch}
 .hint{
-  border:1px solid rgba(255,255,255,.05);border-radius:9px;
-  background:rgba(255,255,255,.017);margin-bottom:7px;overflow:hidden;
-  transition:border-color .2s,background .2s
+  border:1px solid rgba(255,255,255,.05);border-radius:10px;
+  background:rgba(255,255,255,.017);margin-bottom:8px;overflow:hidden;
+  transition:border-color .18s cubic-bezier(.2,.7,.3,1),background .18s cubic-bezier(.2,.7,.3,1)
 }
 .hint.on{border-color:var(--amber-dim);background:rgba(240,166,58,.055)}
 .hint.locked{opacity:.55}
@@ -209,13 +212,20 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .hint-name{font-size:12.5px;color:var(--fg);flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hint-cost{font-family:var(--mono);font-size:11px;color:var(--fg-3);flex:0 0 auto}
 .hint-cost.paid{color:#E0775A}
+/* 解锁瞬间：扣分数字短促放大变红回弹 */
+.hint-cost.deduct-flash{animation:costFlash .6s cubic-bezier(.2,.7,.3,1)}
+@keyframes costFlash{
+  0%{transform:scale(1)}
+  30%{transform:scale(1.5);color:#FF5A3C}
+  100%{transform:scale(1)}
+}
 .hint-body{padding:0 10px 10px;display:none}
 .hint.on .hint-body,.hint.expand .hint-body{display:block}
 .hint-note{font-size:11px;line-height:1.6;color:var(--fg-2)}
 .hint-note.warn{color:#E0A05A}
 .hint-empty{
   font-size:11.5px;color:var(--fg-3);border:1px dashed rgba(255,255,255,.1);
-  border-radius:7px;padding:7px 9px;line-height:1.55
+  border-radius:10px;padding:7px 9px;line-height:1.55
 }
 .slider-row{display:flex;align-items:center;gap:9px;margin-top:4px}
 .slider-row input[type=range]{flex:1 1 auto;-webkit-appearance:none;height:3px;border-radius:3px;background:rgba(255,255,255,.14);outline:none}
@@ -243,27 +253,35 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .switch input:disabled+i{opacity:.4;cursor:not-allowed}
 .switch.disabled{cursor:not-allowed}
 /* 作答区 */
-.answer{border-top:1px solid var(--line);padding:10px;flex:0 0 auto;background:rgba(7,12,17,.4)}
+.answer{border-top:1px solid var(--line);padding:12px;flex:0 0 auto;background:rgba(7,12,17,.4)}
 .answer-lbl{font-size:10.5px;letter-spacing:.18em;color:var(--fg-3);margin:0 0 6px 2px}
 .sel{
   width:100%;padding:9px 10px;margin-bottom:8px;font-size:12.5px;
-  background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.1);border-radius:7px;
+  background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.1);border-radius:10px;
   color:var(--fg);appearance:none;cursor:pointer;
   background-image:linear-gradient(45deg,transparent 50%,var(--fg-3) 50%),linear-gradient(135deg,var(--fg-3) 50%,transparent 50%);
   background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;
   background-size:5px 5px,5px 5px;background-repeat:no-repeat;
-  transition:border-color .15s
+  transition:border-color .18s cubic-bezier(.2,.7,.3,1)
 }
 .sel:focus{outline:none;border-color:var(--amber-soft)}
 .sel:disabled{opacity:.42;cursor:not-allowed}
 .sel option{background:#0C1218;color:var(--fg)}
 .answer-btns{display:flex;gap:8px;margin-top:2px}
 .btn{
-  flex:1 1 0;padding:10px 8px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:500;
+  flex:1 1 0;padding:10px 8px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:500;
   border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--fg);
-  transition:all .16s;letter-spacing:.04em;white-space:nowrap
+  transition:all .18s cubic-bezier(.2,.7,.3,1);letter-spacing:.04em;white-space:nowrap
 }
-.btn:hover:not(:disabled){border-color:var(--amber-soft);background:rgba(240,166,58,.12)}
+.btn:hover:not(:disabled){border-color:var(--amber-soft);background:rgba(240,166,58,.12);transform:translateY(-1px)}
+.btn:active:not(:disabled){transform:translateY(0)}
+/* 省 + 市都选好后，提交按钮轻微 pulse 一次 */
+.btn.pulse{animation:btnPulse .5s cubic-bezier(.2,.7,.3,1)}
+@keyframes btnPulse{
+  0%{transform:scale(1)}
+  35%{transform:scale(1.05)}
+  100%{transform:scale(1)}
+}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn.primary{
   background:linear-gradient(180deg,rgba(240,166,58,.9),rgba(214,140,36,.9));
@@ -274,10 +292,12 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .btn.ghost{flex:0 0 auto;padding:10px 13px}
 #drawer-toggle{
   display:none;position:fixed;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));
-  z-index:1101;width:46px;height:46px;border-radius:50%;place-items:center;cursor:pointer;
-  background:rgba(11,17,23,.94);border:1px solid var(--amber-soft);color:var(--amber);
-  box-shadow:0 8px 26px rgba(0,0,0,.6)
+  z-index:1101;width:54px;height:54px;border-radius:50%;place-items:center;cursor:pointer;
+  background:rgba(10,15,20,.88);border:1px solid var(--amber-soft);color:var(--amber);
+  box-shadow:0 8px 26px rgba(0,0,0,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:transform .18s cubic-bezier(.2,.7,.3,1),background .18s
 }
+#drawer-toggle:active{transform:scale(.94)}
 
 /* ============================================================================
    [06] 揭晓面板（z-index 1150） / 全屏雷达（3000） / 标题页（3200） / 弹窗（2100）
@@ -286,14 +306,21 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   position:fixed;left:0;right:0;bottom:0;z-index:1150;pointer-events:none;
   display:flex;justify-content:center;padding:0 12px calc(18px + env(safe-area-inset-bottom));
 }
-#reveal.show .reveal-card{transform:translateY(0);opacity:1}
+#reveal.show .reveal-card{opacity:1;animation:revealIn .62s cubic-bezier(.22,1,.36,1) forwards}
+/* 入场：自下滑入 scale(.96)+translateY(12px) → 弹性回正 */
+@keyframes revealIn{
+  0%{transform:translateY(130%) scale(.96)}
+  72%{transform:translateY(-7px) scale(1.008)}
+  100%{transform:translateY(0) scale(1)}
+}
 .reveal-card{
   pointer-events:auto;width:min(560px,100%);
-  background:linear-gradient(180deg,rgba(12,18,24,.97),rgba(9,14,19,.97));
-  border:1px solid var(--line);border-top:2px solid var(--amber);border-radius:12px;
+  background:linear-gradient(180deg,rgba(12,18,24,.92),rgba(9,14,19,.92));
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-top:2px solid var(--amber);border-radius:16px;
   box-shadow:0 -6px 44px rgba(0,0,0,.62);
-  padding:14px 16px 15px;text-align:center;
-  transform:translateY(130%);opacity:0;transition:transform .55s cubic-bezier(.22,1,.36,1),opacity .4s ease
+  padding:16px;text-align:center;
+  transform:translateY(130%);opacity:0;transition:opacity .4s ease
 }
 .reveal-city{
   font-family:var(--serif);font-weight:900;color:#FFD88F;
@@ -318,7 +345,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 /* 开场雷达 */
 #radar{
   position:fixed;inset:0;z-index:3000;display:none;place-items:center;
-  background:radial-gradient(circle at 50% 50%,#0B1219 0%,#05090D 75%);
+  background:#070C11;   /* 雷达退场底色与蒙版同色，退场瞬间无色差 */
 }
 #radar.on{display:grid}
 #radar.out{animation:radarOut .55s ease forwards}
@@ -364,7 +391,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   mask:radial-gradient(circle at 50% 45%,#000 5%,transparent 72%);
   -webkit-mask:radial-gradient(circle at 50% 45%,#000 5%,transparent 72%)
 }
-.title-mark{display:inline-grid;place-items:center;width:52px;height:52px;border:1px solid var(--amber-soft);border-radius:13px;color:var(--amber);margin-bottom:16px;box-shadow:0 0 34px rgba(240,166,58,.16) inset}
+.title-mark{display:inline-grid;place-items:center;width:52px;height:52px;border:1px solid var(--amber-soft);border-radius:16px;color:var(--amber);margin-bottom:16px;box-shadow:0 0 34px rgba(240,166,58,.16) inset}
 .title-mark svg{width:26px;height:26px}
 .title-h{
   font-family:var(--serif);font-weight:900;font-size:clamp(38px,10vw,54px);
@@ -373,7 +400,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 }
 .title-sub{font-size:12px;letter-spacing:.4em;color:var(--amber);margin-bottom:26px;text-indent:.4em}
 .stats{
-  border:1px solid var(--line);border-radius:11px;overflow:hidden;
+  border:1px solid var(--line);border-radius:14px;overflow:hidden;
   background:rgba(9,14,19,.6);margin-bottom:22px
 }
 .stats-row{display:flex;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -395,8 +422,9 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 }
 #modal.on{display:grid}
 .modal-card{
-  width:min(400px,100%);background:var(--panel-solid);
-  border:1px solid var(--line);border-radius:12px;padding:18px;
+  width:min(400px,100%);background:rgba(10,15,20,.86);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:16px;padding:20px;
   box-shadow:0 24px 70px rgba(0,0,0,.7)
 }
 .modal-card h3{margin:0 0 4px;font-size:14.5px;font-family:var(--serif);letter-spacing:.08em}
@@ -405,7 +433,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .txt{
   width:100%;padding:10px;font-family:var(--mono);font-size:12px;
   background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.11);
-  border-radius:7px;color:var(--fg);outline:none;transition:border-color .15s
+  border-radius:10px;color:var(--fg);outline:none;transition:border-color .18s cubic-bezier(.2,.7,.3,1)
 }
 .txt:focus{border-color:var(--amber-soft)}
 .modal-btns{display:flex;gap:9px;margin-top:14px}
@@ -418,8 +446,9 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   width:max-content;max-width:min(90vw,440px)
 }
 .toast{
-  padding:10px 15px;border-radius:8px;font-size:12.5px;line-height:1.5;
-  background:rgba(11,17,23,.96);border:1px solid var(--line);color:var(--fg);
+  padding:10px 15px;border-radius:10px;font-size:12.5px;line-height:1.5;
+  background:rgba(10,15,20,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);color:var(--fg);
   box-shadow:0 10px 32px rgba(0,0,0,.6);
   animation:toastIn .3s ease;display:flex;align-items:center;gap:9px
 }
@@ -441,7 +470,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   .hud-item.hide-sm{display:none}
   #intel{
     top:auto;left:0;right:0;bottom:0;width:100%;max-height:74vh;
-    border-radius:14px 14px 0 0;border-left:none;border-right:none;border-bottom:none;
+    border-radius:16px 16px 0 0;border-left:none;border-right:none;border-bottom:none;
     transform:translateY(calc(100% - 0px));padding-bottom:env(safe-area-inset-bottom)
   }
   #intel.open{transform:translateY(0)}
@@ -832,7 +861,7 @@ var state = {
   answered: false,
   busy: false,         // 出题中，防重入
   poiEnabled: false,
-  layers: { sat: null, road: null, poi: null, city: null, prov: null, highlight: null },
+  layers: { sat: null, road: null, poi: null, city: null, cityHalo: null, cityCore: null, prov: null, highlight: null, highlightHalo: null },
   maskRaf: 0
 };
 
@@ -1158,6 +1187,10 @@ var Mask = {
 function bboxToLatLngBounds(bbox) {
   return L.latLngBounds([bbox[1], bbox[0]], [bbox[3], bbox[2]]);
 }
+/* flyToBounds / getBoundsZoom 共用的像素 padding：视口短边的 8% */
+function flyPadPx() {
+  return Math.max(24, Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.08));
+}
 function squareBounds(c, halfMeters) {
   var dLat = halfMeters / 111320;
   var dLng = halfMeters / (111320 * Math.max(0.15, Math.cos(c.lat * Math.PI / 180)));
@@ -1172,18 +1205,36 @@ var Lock = {
     m.setMaxZoom(CONFIG.ZOOM_MAX);
     m.setMaxBounds(squareBounds(state.centerLatLng, state.baseRadius * CONFIG.MAXBOUNDS_FACTOR));
   },
-  /* Lv.4：minZoom → min(9, fitZoom)，maxBounds → 市 bbox 外扩 20% */
+  /* Lv.4：minZoom → min(9, fitZoom, 装下整个市所需 zoom)，maxBounds → 市 bbox 外扩 20%。
+     cityMin / cityBounds 拆开：飞行前先放宽 minZoom（伊犁/巴音郭楞这类大市
+     需要低于 9 的 zoom 才能整市入画，故把 fitCity 一并纳入下限计算），
+     flyToBounds 落定后再收紧 maxBounds（避免被弹回）。 */
+  cityMin: function () {
+    var m = state.map;
+    /* 注意：getBoundsZoom 的 padding 是总量（flyToBounds 的 padding 是每侧），故 ×2 */
+    var fitCity = m.getBoundsZoom(bboxToLatLngBounds(state.answer.bbox), false,
+      L.point(flyPadPx() * 2, flyPadPx() * 2));
+    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV4, state.fitZoom, fitCity));
+  },
   city: function () {
     var m = state.map, b = state.answer.bbox;
-    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV4, state.fitZoom));
+    this.cityMin();
     var padX = (b[2] - b[0]) * CONFIG.MAXBOUNDS_PAD + 0.004;
     var padY = (b[3] - b[1]) * CONFIG.MAXBOUNDS_PAD + 0.004;
     m.setMaxBounds(L.latLngBounds([b[1] - padY, b[0] - padX], [b[3] + padY, b[2] + padX]));
   },
-  /* Lv.5：minZoom → min(6, fitZoom)，maxBounds → 全国范围 */
+  /* Lv.5：minZoom → min(6, fitZoom, 装下整个目标省所需 zoom)，maxBounds → 全国范围 */
+  nationalMin: function () {
+    var m = state.map;
+    var pb = provinceBBoxFromGj(state.lv5Gj, state.answer.provCode);
+    /* 注意：getBoundsZoom 的 padding 是总量（flyToBounds 的 padding 是每侧），故 ×2 */
+    var fitProv = pb ? m.getBoundsZoom(bboxToLatLngBounds(pb), false,
+      L.point(flyPadPx() * 2, flyPadPx() * 2)) : CONFIG.ZOOM_MIN_LV5;
+    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV5, state.fitZoom, fitProv));
+  },
   national: function () {
     var m = state.map;
-    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV5, state.fitZoom));
+    this.nationalMin();
     var b = state.chinaBBox || [73.4, 3.5, 135.2, 53.7];
     var padX = (b[2] - b[0]) * 0.06, padY = (b[3] - b[1]) * 0.06;
     m.setMaxBounds(L.latLngBounds([b[1] - padY, b[0] - padX], [b[3] + padY, b[2] + padX]));
@@ -1235,42 +1286,58 @@ var Layers = {
   },
   clearCity: function () {
     if (state.layers.city) { state.map.removeLayer(state.layers.city); state.layers.city = null; }
+    state.layers.cityHalo = null; state.layers.cityCore = null;
   },
   clearProv: function () {
     if (state.layers.prov) { state.map.removeLayer(state.layers.prov); state.layers.prov = null; }
-    if (state.layers.highlight) { state.layers.highlight = null; }
+    if (state.layers.highlight) { state.map.removeLayer(state.layers.highlight); state.layers.highlight = null; }
+    if (state.layers.highlightHalo) { state.map.removeLayer(state.layers.highlightHalo); state.layers.highlightHalo = null; }
   },
-  /* Lv.4：绘制市域描边 */
+  /* Lv.4：市域描边分两层 —— 外圈琥珀 halo（宽、半透明）+ 内芯（细、不透明），
+     与白色细路网一眼可分；描线动画只套在内芯 path 上 */
   showCity: function (coords, onDone) {
     this.clearCity();
-    var g = this.coordsToGroup(coords, {
-      color: '#F0A63A', weight: 2, opacity: .95, fill: true, fillColor: '#F0A63A', fillOpacity: .035
+    var halo = this.coordsToGroup(coords, {
+      color: '#F0A63A', weight: 9, opacity: .25, fill: false
     });
-    state.layers.city = g.addTo(state.map);
-    drawOnGroup(g, 1500);
+    var core = this.coordsToGroup(coords, {
+      color: '#F0A63A', weight: 2.8, opacity: 1, fill: true, fillColor: '#F0A63A', fillOpacity: .035
+    });
+    state.layers.cityHalo = halo;
+    state.layers.cityCore = core;
+    state.layers.city = L.featureGroup([halo, core]).addTo(state.map);
+    drawOnGroup(core, 1500);
     setTimeout(function () { if (onDone) onDone(); }, 520);
   },
   /* Lv.5：绘制全部省界（无文字标注）并高亮目标省 */
   showProvinces: function (gj, targetCode, onDone) {
     this.clearProv();
+    /* 普通省：细描边、低透明度，明显弱于路网之上的目标省与市界 */
     var g = L.geoJSON(gj, {
       interactive: false,
       style: function (f) {
-        return { color: '#F0A63A', weight: 1, opacity: .34, fill: true, fillColor: '#F0A63A', fillOpacity: .03 };
+        return { color: '#F0A63A', weight: 1.2, opacity: .35, fill: true, fillColor: '#F0A63A', fillOpacity: .03 };
       }
     }).addTo(state.map);
     state.layers.prov = g;
 
-    // 目标省：加粗 + 呼吸描边（口径 B 指定要“绘制全国省界并高亮目标省”）
-    var hi = L.geoJSON(gj, {
-      interactive: false,
-      filter: function (f) {
-        return f && f.properties && String(f.properties.adcode) === String(targetCode);
-      },
-      style: function () {
-        return { color: '#FFC46B', weight: 2.4, opacity: 1, fill: true, fillColor: '#F0A63A', fillOpacity: .09 };
-      }
-    }).addTo(state.map);
+    // 目标省：halo + 内芯 + 呼吸描边（口径 B 指定要“绘制全国省界并高亮目标省”）
+    var mkHi = function (styleFn) {
+      return L.geoJSON(gj, {
+        interactive: false,
+        filter: function (f) {
+          return f && f.properties && String(f.properties.adcode) === String(targetCode);
+        },
+        style: styleFn
+      }).addTo(state.map);
+    };
+    var halo = mkHi(function () {
+      return { color: '#F0A63A', weight: 9, opacity: .25, fill: false };
+    });
+    var hi = mkHi(function () {
+      return { color: '#FFC46B', weight: 2.8, opacity: 1, fill: true, fillColor: '#F0A63A', fillOpacity: .09 };
+    });
+    state.layers.highlightHalo = halo;
     state.layers.highlight = hi;
     hi.eachLayer(function (l) { if (l._path) l._path.classList.add('hl-breathe'); });
 
@@ -1376,6 +1443,10 @@ var MapCtl = {
       /* 关闭 Leaflet 的 CSS 缩放动画：让 move/zoom 事件与视图严格同步，
          蒙版每帧都能精确贴合（否则缩放的 ~250ms 内蒙版会错位）。 */
       zoomAnimation: false,
+      /* 无极缩放：滚轮/捏合连续变焦；控件按钮按 0.5 档；滚轮灵敏度 120px/档 */
+      zoomSnap: 0,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 120,
       fadeAnimation: true,
       markerZoomAnimation: false,
       worldCopyJump: false,
@@ -1414,19 +1485,18 @@ var MapCtl = {
     if (state.layers.road) state.layers.road.setOpacity(v);
   },
   /* 由 R 反算初始缩放：让圆的屏幕半径 ≈ 视口短边的 38%。
-     注意不能与 12 取 max —— R 对绝大多数地级市会顶到 RADIUS_MAX=25km，
-     z=12 时约 31 m/px，圆半径达 760~800px，比常见屏幕的半高还大，
-     会把圆撑爆视口、使蒙版形同虚设。此处只保留上界 ZOOM_MAX；
-     并对取整结果做一次保护性降档，确保圆直径不超过视口短边。 */
+     zoomSnap:0 后为连续缩放：直接取对数精确解并向下保留 1 位小数，
+     只会往远取、不会往近取，确保圆直径恒不超过视口短边；
+     末尾保留保护性降档循环（每次退 0.1 档）兜底极端比例。 */
   zoomForRadius: function (R, lat) {
     var shortSide = Math.min(window.innerWidth, window.innerHeight);
     var cosLat = Math.cos(lat * Math.PI / 180);
     function mppAt(zz) { return 156543.03392 * cosLat / Math.pow(2, zz); }
     var targetMpp = R / Math.max(60, shortSide * 0.38);   // 目标米/像素（半径 ≈ 短边 38%）
-    var z = Math.round(Math.log2(156543.03392 * cosLat / targetMpp));
+    var z = Math.log2(156543.03392 * cosLat / targetMpp);
     z = Math.min(CONFIG.ZOOM_MAX, z);
-    // 取整可能把圆顶出视口，逐档退到 2r ≤ 短边 为止
-    while (z > 3 && (R / mppAt(z)) * 2 > shortSide) z--;
+    z = Math.floor(z * 10) / 10;          // 向下取 1 位小数：圆不会撑爆视口
+    while (z > 3 && (R / mppAt(z)) * 2 > shortSide * 0.98) z = Math.max(3, Math.floor((z - 0.1) * 10) / 10);
     return z;
   },
   /* 落位到本回合的落点 */
@@ -1597,10 +1667,17 @@ var Hint = {
   /* --- D.4 交互 ---------------------------------------------------------- */
   onToggle: function (level, on) {
     var h = CONFIG.HINTS[level - 1];
-    // 首次解锁 → 永久扣分（关掉不退款，再次打开不重复扣）
+    var rec = this.rows[level];
+    // 首次解锁 → 永久扣分（关掉不退款，再次打开不重复扣）；扣分数字短促放大变红回弹
     if (on && !state.unlocked[level]) {
       state.unlocked[level] = true;
       state.deduction += h.cost;
+      if (rec && level > 1) {
+        rec.cost.classList.remove('deduct-flash');
+        void rec.cost.offsetWidth;       // 强制重排以重启动画
+        rec.cost.classList.add('deduct-flash');
+        setTimeout(function () { rec.cost.classList.remove('deduct-flash'); }, 700);
+      }
       updateHUD();
     }
     applyHint(level, on);
@@ -1671,7 +1748,7 @@ function applyHint(level, on) {
   }
 }
 
-/* Lv.4：蒙版动画扩张覆盖市 bbox → 放宽视野 → 描出市界 */
+/* Lv.4：蒙版动画扩张覆盖市 bbox → flyToBounds 刚好放下整个市 → 描出市界 */
 function enableLv4() {
   if (state.lv4Done) {          // 已解锁过，仅恢复显示
     if (state.layers.city) state.layers.city.addTo(state.map);
@@ -1679,9 +1756,17 @@ function enableLv4() {
     return;
   }
   state.lv4Done = true; state.lv4Shown = true;
+  var m = state.map;
   var target = Mask.radiusToCover(state.answer.bbox, state.answer.point);
-  Mask.expandTo(target);                 // 直径扩张动画（口径 B）
-  Lock.city();
+  Lock.cityMin();                        // 先放宽缩放下限（飞行途中不被 minZoom 卡住）
+  Mask.expandTo(target, function () {    // 蒙版扩张动画结束后再飞至市域全景（口径 B）
+    if (state.answered) return;          // 期间已提交 → 交给揭晓流程接管视野
+    var pad = flyPadPx();
+    m.setMaxBounds(null);                // 飞行期间解除限制，避免 flyToBounds 被弹回
+    m.flyToBounds(bboxToLatLngBounds(state.answer.bbox),
+      { padding: [pad, pad], duration: 1.2, easeLinearity: .22 });
+    m.once('moveend', function () { if (!state.answered) Lock.city(); });   // 落定后再收紧 maxBounds
+  });
   Layers.showCity(state.answer.coords);
   UI.status('市域边界已加载');
 }
@@ -1695,6 +1780,7 @@ function disableLv4() {
 function enableLv5() {
   if (state.lv5Done) {
     if (state.layers.prov) state.layers.prov.addTo(state.map);
+    if (state.layers.highlightHalo) state.layers.highlightHalo.addTo(state.map);
     if (state.layers.highlight) state.layers.highlight.addTo(state.map);
     return;
   }
@@ -1725,11 +1811,36 @@ function enableLv5() {
     Hint.refreshAvailability();
   });
 }
+/* 从全国 GeoJSON 中取出目标省 feature 的 bbox（供 Lv.5 flyToBounds） */
+function provinceBBoxFromGj(gj, code) {
+  if (!gj || !gj.features) return null;
+  for (var i = 0; i < gj.features.length; i++) {
+    var f = gj.features[i];
+    if (f && f.properties && String(f.properties.adcode) === String(code) && f.geometry) {
+      var c = f.geometry.coordinates;
+      return coordsBBox(f.geometry.type === 'Polygon' ? [c] : c);
+    }
+  }
+  return null;
+}
 function finishLv5() {
   state.lv5Done = true;
-  Lock.national();
+  var m = state.map;
+  Lock.nationalMin();                    // 先放宽缩放下限（飞行途中不被 minZoom 卡住）
   var bbox = state.chinaBBox || [73.4, 3.5, 135.2, 53.7];
-  Mask.expandTo(Mask.radiusToCover(bbox, state.answer.point));   // 覆盖全国 bbox → 蒙版实际失效
+  Mask.expandTo(Mask.radiusToCover(bbox, state.answer.point), function () {
+    // 覆盖全国 bbox → 蒙版实际失效；随后飞至目标省，刚好放下全省
+    if (state.answered) return;          // 期间已提交 → 交给揭晓流程接管视野
+    var pb = provinceBBoxFromGj(state.lv5Gj, state.answer.provCode);
+    if (pb) {
+      var pad = flyPadPx();
+      m.setMaxBounds(null);              // 飞行期间解除限制，避免 flyToBounds 被弹回
+      m.flyToBounds(bboxToLatLngBounds(pb), { padding: [pad, pad], duration: 1.3, easeLinearity: .22 });
+      m.once('moveend', function () { if (!state.answered) Lock.national(); });   // 落定后再收紧 maxBounds
+    } else {
+      Lock.national();
+    }
+  });
   Layers.showProvinces(state.lv5Gj, state.answer.provCode);
   UI.status('省域轮廓已加载');
   UI.toast('全国省界已绘制，目标省已高亮', 'ok', 3000);
@@ -1737,6 +1848,7 @@ function finishLv5() {
 function disableLv5() {
   if (state.layers.prov && state.map.hasLayer(state.layers.prov)) state.map.removeLayer(state.layers.prov);
   if (state.layers.highlight && state.map.hasLayer(state.layers.highlight)) state.map.removeLayer(state.layers.highlight);
+  if (state.layers.highlightHalo && state.map.hasLayer(state.layers.highlightHalo)) state.map.removeLayer(state.layers.highlightHalo);
 }
 
 /* ============================================================================
@@ -1802,7 +1914,17 @@ function updateSubmit() {
   var hasCityList = !$('sel-city').disabled;
   var cn = $('sel-city').value;
   var ok = !!pc && (!hasCityList || !!cn);
-  $('btn-submit').disabled = !ok || state.answered || state.busy;
+  var btn = $('btn-submit');
+  var wasReady = !btn.disabled;
+  btn.disabled = !ok || state.answered || state.busy;
+  /* 提交按钮由禁用变为可用的瞬间（省 + 市都选好）轻微 pulse 一次：
+     以状态翻转为准，已可用期间反复改动不做二次 pulse */
+  if (wasReady === false && !btn.disabled) {
+    btn.classList.remove('pulse');
+    void btn.offsetWidth;
+    btn.classList.add('pulse');
+    setTimeout(function () { btn.classList.remove('pulse'); }, 600);
+  }
 }
 function setAnswerEnabled(on) {
   $('sel-prov').disabled = !on;
@@ -2041,11 +2163,14 @@ function finishRound(g) {
   updateHUD();
   renderStats();
 
-  // 金色市界描边 + 描线动画（无论是否买过 Lv.4 都在揭晓时呈现）
+  // 金色市界描边 + 描线动画（无论是否买过 Lv.4 都在揭晓时呈现；内芯换更亮的金色）
   Layers.showCity(state.answer.coords);
   setTimeout(function () {
-    if (state.layers.city) {
-      state.layers.city.setStyle({ color: '#FFD28A', weight: 2.6, opacity: 1, fill: false });
+    if (state.layers.cityCore) {
+      state.layers.cityCore.setStyle({ color: '#FFD37A', weight: 3, opacity: 1, fill: false });
+    }
+    if (state.layers.cityHalo) {
+      state.layers.cityHalo.setStyle({ color: '#FFD37A', weight: 10, opacity: .3 });
     }
   }, 80);
 
