@@ -30,3 +30,11 @@
 - 验证：两段内联脚本 node --check 通过；数据桩自驱动测试页（fetchJSON 短路为本地方形省/市 fixture）浏览器实测——NIGHT|provPaths=3|cityPaths=4|okDisabled=false|pickLabel=测试省乙 · 测试市3|submitDisabled=false|mask=rgb(7,12,17)；DAY|mask=rgb(227,232,238)|themeAttr=day|moonVisible=false|sunVisible=true；无 JS 报错。（首轮 NIGHT 行缺失系测试桩自身 bug：__report(__report.length?null:'') 误清报告框，非产品问题，已修。）
 - Git：未提交，待用户确认。
 - 遗留：①选点缩放动画手感、白绿灰底图观感需真实环境人工复核（测试桩无真实瓦片）；②POI 多中心铺满效果需真实高德 Key 验证（沿用遗留）；③真实 DataV 省市边界渲染仅代码层复用 Lv.5 已验证路径。
+
+### 2026-10-09 20:45｜TG-05 选点体验优化（缩放流畅度 / 配色对比度）
+- 目标：落实用户反馈 2 条：①选省市时缩放卡顿，要更丝滑；②浅绿色面块与背景差异小、看不清。
+- 缩放流畅度：卡顿主因是选点地图用默认 SVG 渲染，省界多边形顶点多、动画逐帧重绘吃力 → ensureMap 加 preferCanvas:true（Canvas 渲染 + Leaflet 自带命中检测，hover/click 行为不变）；style 加 smoothFactor:1.6、界线 weight 1→1.2；选省飞行 duration 0.8→1.0 + easeLinearity 0.22，并用 _flying 标记 + moveend 串接——市域 fitBounds 等飞行落定后再执行，不再中途打断（含返回省界时的排队保护）。
+- 配色：面块与 #F2F5F0 背景过近。改为地图底 #F5F7F2 + 省面 #CFE3BC（hover #A9CE8B）/ 市面 #D6E7C5（hover #AFD393），选中仍琥珀 #F3C878。
+- 验证：两段内联脚本 node --check 通过；数据桩自驱动测试页（适配 Canvas：不再查 path 元素，改用图层实例 fire('click') 驱动并检查 canvas 元素存在）浏览器实测——NIGHT|canvas=true|provLayers=3|cityLayers=4|okDisabled=false|pickLabel=测试省乙 · 测试市3|submitDisabled=false|provFill=#CFE3BC|mask=rgb(7,12,17)；DAY 主题行正常；无 JS 报错。
+- Git：本轮修复单独立即提交；前两轮已先行提交（f638781）。
+- 遗留：Canvas 下缩放手感需真实环境人工复核（测试桩无真实省界数据）。

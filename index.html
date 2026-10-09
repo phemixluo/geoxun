@@ -325,7 +325,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .picker-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
 .picker-head .t{flex:1 1 auto;font-size:13px;font-weight:600;color:var(--fg);letter-spacing:.06em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picker-head .btn{padding:6px 11px;font-size:12px;flex:0 0 auto}
-#picker-map{flex:1 1 auto;min-height:0;background:#F2F5F0}
+#picker-map{flex:1 1 auto;min-height:0;background:#F5F7F2}
 .picker-foot{display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)}
 #picker-sel{flex:1 1 auto;font-size:12.5px;color:var(--fg-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #picker-sel b{color:var(--amber);font-weight:600}
@@ -2054,10 +2054,10 @@ function resetAnswerUI() {
   setAnswerEnabled(false);
 }
 
-/* 浅色矢量选图样式（白底 + 浅绿灰省市面 + 白界线，类似无注记的标准底图） */
+/* 浅色矢量选图样式（白底 + 清爽绿省市面 + 白界线，类似无注记的标准底图） */
 var PICK_STYLE = {
-  provFill: '#E3EBDD', provHover: '#C9DEC0', provSel: '#F3C878',
-  cityFill: '#E6EDE2', cityHover: '#CBDFC2', citySel: '#F3C878',
+  provFill: '#CFE3BC', provHover: '#A9CE8B', provSel: '#F3C878',
+  cityFill: '#D6E7C5', cityHover: '#AFD393', citySel: '#F3C878',
   border: '#FFFFFF'
 };
 var Pick = {
@@ -2073,7 +2073,8 @@ var Pick = {
     if (this.map) return;
     var m = L.map('picker-map', {
       zoomControl: false, attributionControl: false,
-      zoomSnap: 0.5, minZoom: 3, maxZoom: 12
+      zoomSnap: 0.5, minZoom: 3, maxZoom: 12,
+      preferCanvas: true   // 省界多边形顶点很多，Canvas 渲染让缩放/飞行动画不掉帧
     });
     L.control.zoom({ position: 'bottomright' }).addTo(m);
     this.map = m;
@@ -2119,7 +2120,7 @@ var Pick = {
       self.chinaLayer = L.geoJSON(gj, {
         interactive: true,
         style: function () {
-          return { fillColor: PICK_STYLE.provFill, fillOpacity: .92, color: PICK_STYLE.border, weight: 1 };
+          return { fillColor: PICK_STYLE.provFill, fillOpacity: .92, color: PICK_STYLE.border, weight: 1.2, smoothFactor: 1.6 };
         },
         onEachFeature: function (f, layer) {
           layer.on('mouseover', function () {
@@ -2149,7 +2150,13 @@ var Pick = {
     if (this.selProvLayer && this.selProvLayer !== layer) this.selProvLayer.setStyle({ fillColor: PICK_STYLE.provFill });
     this.selProvLayer = layer;
     layer.setStyle({ fillColor: PICK_STYLE.provSel });
-    try { this.map.flyToBounds(layer.getBounds(), { padding: [14, 14], duration: 0.8 }); } catch (e) {}
+    /* 飞行动画：时长略放长 + 标记飞行中，市域图等落定后再 fitBounds，避免中途打断 */
+    this._flying = true;
+    var pself = this;
+    try {
+      this.map.once('moveend', function () { pself._flying = false; });
+      this.map.flyToBounds(layer.getBounds(), { padding: [14, 14], duration: 1.0, easeLinearity: 0.22 });
+    } catch (e) { this._flying = false; }
     $('picker-crumb').textContent = name + ' · 加载市域…';
     $('picker-sel').textContent = '已选省份：' + name;
     $('btn-pick-ok').disabled = true;
@@ -2184,7 +2191,7 @@ var Pick = {
     this.cityLayer = L.geoJSON(gj, {
       interactive: true,
       style: function () {
-        return { fillColor: PICK_STYLE.cityFill, fillOpacity: .92, color: PICK_STYLE.border, weight: 1 };
+        return { fillColor: PICK_STYLE.cityFill, fillOpacity: .92, color: PICK_STYLE.border, weight: 1.2, smoothFactor: 1.6 };
       },
       onEachFeature: function (f, layer) {
         layer.on('mouseover', function () {
@@ -2206,7 +2213,17 @@ var Pick = {
         });
       }
     }).addTo(this.map);
-    try { this.map.fitBounds(this.cityLayer.getBounds(), { padding: [10, 10] }); } catch (e) {}
+    try {
+      var b = this.cityLayer.getBounds();
+      if (this._flying) {
+        var m2 = this.map, cself = this;   // 飞行未落定 → 等结束后再贴合市域，动画连贯不打断
+        m2.once('moveend', function () {
+          if (cself.step === 'city' && cself.cityLayer) m2.fitBounds(b, { padding: [10, 10] });
+        });
+      } else {
+        this.map.fitBounds(b, { padding: [10, 10] });
+      }
+    } catch (e) {}
     if (muni) $('picker-sel').innerHTML = '直辖市/特区：点击市域任意位置选定 <b>' + this.prov.name + '</b>';
   },
   confirm: function () {
