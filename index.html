@@ -1,0 +1,2183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>图寻华夏</title>
+<meta name="description" content="卫星影像地理侦察游戏">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link id="lf-css" rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script>
+/* Leaflet CSS 兜底：主源（unpkg）不可用时自动切换到 jsdelivr，避免地图样式缺失 */
+(function () {
+  var link = document.getElementById('lf-css');
+  function fallback() {
+    if (document.getElementById('lf-css-2')) return;
+    var n = document.createElement('link');
+    n.id = 'lf-css-2'; n.rel = 'stylesheet';
+    n.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(n);
+  }
+  link.addEventListener('error', fallback);
+  setTimeout(function () {
+    var ok = false;
+    try {
+      for (var i = 0; i < document.styleSheets.length; i++) {
+        var ss = document.styleSheets[i];
+        if (ss.href && /leaflet/i.test(ss.href)) { ok = true; break; }
+      }
+    } catch (e) { ok = true; }
+    if (!ok) fallback();
+  }, 1800);
+})();
+</script>
+<style>
+/* ============================================================================
+   [01] 主题变量 / 基础重置
+   主题：卫星侦察情报终端。底色 #0A0F14，唯一强调色琥珀 #F0A63A。
+   ========================================================================== */
+:root{
+  --bg:#0A0F14;
+  --bg-deep:#070C11;
+  --amber:#F0A63A;
+  --amber-soft:rgba(240,166,58,.55);
+  --amber-dim:rgba(240,166,58,.18);
+  --amber-glow:rgba(240,166,58,.42);
+  --fg:#E8EDF2;
+  --fg-2:#93A1AF;
+  --fg-3:#5E6C7A;
+  --line:rgba(240,166,58,.16);
+  --panel:rgba(11,17,23,.88);
+  --panel-solid:#0C1218;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:'Noto Serif SC',Georgia,'Songti SC',serif;
+  --sans:'Noto Sans SC',system-ui,-apple-system,'Microsoft YaHei',sans-serif;
+  /* 蒙版几何：默认洞在屏幕中央、半径 0（即全屏遮挡） */
+  --cx:50%;
+  --cy:50%;
+  --r:0px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{
+  margin:0;padding:0;height:100%;width:100%;
+  background:var(--bg);color:var(--fg);
+  font-family:var(--sans);font-weight:400;
+  overflow:hidden;overscroll-behavior:none;
+}
+button,select,input{font-family:inherit;color:inherit}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+svg.ico{width:16px;height:16px;flex:0 0 auto;display:block}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(240,166,58,.22);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ============================================================================
+   [02] 地图容器
+   注意：#map 不能设置 z-index，否则会生成层叠上下文，
+   Leaflet 控件将永远压在蒙版之下。此处保持 z-index:auto。
+   ========================================================================== */
+#map{position:fixed;inset:0;background:var(--bg-deep);outline:none}
+.leaflet-container{background:var(--bg-deep);font-family:var(--sans)}
+.leaflet-control-zoom{border:none!important;box-shadow:0 6px 22px rgba(0,0,0,.55)!important}
+.leaflet-control-zoom a{
+  background:rgba(11,17,23,.9)!important;color:var(--amber)!important;
+  border:1px solid var(--line)!important;width:34px!important;height:34px!important;
+  line-height:32px!important;font-weight:500!important;font-size:19px!important;
+  backdrop-filter:blur(6px);transition:background .15s,color .15s
+}
+.leaflet-control-zoom a:hover{background:rgba(240,166,58,.16)!important;color:#FFD28A!important}
+.leaflet-bar a:first-child{border-radius:7px 7px 0 0!important}
+.leaflet-bar a:last-child{border-radius:0 0 7px 7px!important}
+/* 底图上禁止出现任何文字（卫星影像本身无标注；路网用的是无文字透明叠层） */
+.leaflet-tooltip.poi-tip{
+  background:rgba(9,14,19,.92);border:1px solid var(--line);color:var(--fg);
+  font-size:11.5px;font-family:var(--sans);padding:3px 7px;border-radius:5px;
+  box-shadow:0 4px 14px rgba(0,0,0,.5)
+}
+.leaflet-tooltip.poi-tip::before{display:none}
+.leaflet-tooltip.city-tip{
+  background:transparent;border:none;box-shadow:none;color:var(--amber);
+  font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:0
+}
+.leaflet-tooltip.city-tip::before{display:none}
+
+/* ============================================================================
+   [03] 蒙版 + 描边环（z-index 800 / 801，均 pointer-events:none）
+   蒙版用 CSS mask + radial-gradient 挖洞；洞的位置与半径由 CSS 变量驱动，
+   在地图 move/zoom/resize 时更新变量，避免反复重写整条规则。
+   ========================================================================== */
+#mask{
+  position:fixed;inset:0;pointer-events:none;z-index:800;
+  background:rgba(7,12,17,.97);
+  -webkit-mask-image:radial-gradient(circle at var(--cx) var(--cy),
+      transparent 0, transparent calc(var(--r) - 1px), #000 var(--r));
+          mask-image:radial-gradient(circle at var(--cx) var(--cy),
+      transparent 0, transparent calc(var(--r) - 1px), #000 var(--r));
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-size:100% 100%;mask-size:100% 100%;
+  opacity:1;transition:opacity .35s ease;
+}
+#mask.off{opacity:0;visibility:hidden}
+#ring{
+  position:fixed;left:50%;top:50%;width:0;height:0;pointer-events:none;z-index:801;
+  border-radius:50%;border:1.5px solid rgba(240,166,58,.9);
+  box-shadow:0 0 22px rgba(240,166,58,.35),inset 0 0 22px rgba(240,166,58,.16);
+  transform:translate(-50%,-50%);
+  animation:breathe 2.6s ease-in-out infinite;
+  opacity:1;transition:opacity .4s ease;
+}
+#ring.off,#ring.ring-hidden{opacity:0}
+#ring.off{visibility:hidden}
+@keyframes breathe{
+  0%,100%{border-color:rgba(240,166,58,.9);box-shadow:0 0 22px rgba(240,166,58,.35),inset 0 0 22px rgba(240,166,58,.16)}
+  50%{border-color:rgba(240,166,58,.5);box-shadow:0 0 10px rgba(240,166,58,.18),inset 0 0 10px rgba(240,166,58,.08)}
+}
+/* 行政边界沿路径描线显现（--len 由 JS 写入） */
+path.draw-on{
+  stroke-dasharray:var(--len);
+  animation-name:drawon;animation-timing-function:ease-out;animation-fill-mode:forwards
+}
+@keyframes drawon{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+/* 目标省呼吸高亮 */
+path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
+@keyframes hlBreathe{
+  0%,100%{stroke-opacity:1;filter:drop-shadow(0 0 8px rgba(240,166,58,.8))}
+  50%{stroke-opacity:.5;filter:drop-shadow(0 0 2px rgba(240,166,58,.35))}
+}
+
+/* ============================================================================
+   [04] 顶部 HUD（z-index 1100）
+   ========================================================================== */
+#hud{
+  position:fixed;top:0;left:0;right:0;height:50px;z-index:1100;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:0 12px 0 14px;
+  background:linear-gradient(180deg,rgba(7,12,17,.95),rgba(7,12,17,.62) 70%,transparent);
+  pointer-events:none;
+  padding-top:env(safe-area-inset-top);
+}
+#hud>*{pointer-events:auto}
+.hud-left{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden}
+.hud-brand{display:flex;align-items:center;gap:7px;color:var(--amber);flex:0 0 auto}
+.hud-brand span{font-family:var(--serif);font-weight:700;font-size:15px;letter-spacing:.08em;white-space:nowrap}
+.hud-sep{width:1px;height:16px;background:var(--line);flex:0 0 auto}
+.hud-item{
+  font-size:11.5px;color:var(--fg-2);white-space:nowrap;display:flex;align-items:baseline;gap:5px
+}
+.hud-item b{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--fg)}
+.hud-item b.amber{color:var(--amber)}
+.hud-right{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.icon-btn{
+  width:32px;height:32px;display:grid;place-items:center;cursor:pointer;
+  background:rgba(11,17,23,.8);border:1px solid var(--line);border-radius:7px;
+  color:var(--fg-2);transition:color .15s,border-color .15s,background .15s
+}
+.icon-btn:hover{color:var(--amber);border-color:var(--amber-soft);background:rgba(240,166,58,.1)}
+
+/* ============================================================================
+   [05] 右侧情报面板（z-index 1100） / 移动端 ≤900px 收为底部抽屉
+   ========================================================================== */
+#intel{
+  position:fixed;top:58px;right:12px;width:290px;max-height:calc(100vh - 76px);
+  z-index:1100;display:flex;flex-direction:column;
+  background:var(--panel);backdrop-filter:blur(11px);
+  border:1px solid var(--line);border-radius:11px;
+  box-shadow:0 18px 46px rgba(0,0,0,.5);
+  overflow:hidden;transition:transform .32s cubic-bezier(.4,0,.2,1)
+}
+.intel-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 12px;border-bottom:1px solid var(--line);flex:0 0 auto
+}
+.intel-head .t{font-size:12px;letter-spacing:.2em;color:var(--amber);font-weight:500}
+#intel-status{font-size:10.5px;color:var(--fg-3);font-family:var(--mono);text-align:right}
+.intel-scroll{overflow-y:auto;overflow-x:hidden;padding:9px;-webkit-overflow-scrolling:touch}
+.hint{
+  border:1px solid rgba(255,255,255,.05);border-radius:9px;
+  background:rgba(255,255,255,.017);margin-bottom:7px;overflow:hidden;
+  transition:border-color .2s,background .2s
+}
+.hint.on{border-color:var(--amber-dim);background:rgba(240,166,58,.055)}
+.hint.locked{opacity:.55}
+.hint-top{display:flex;align-items:center;gap:8px;padding:9px 10px}
+.hint-lv{
+  font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--amber);
+  border:1px solid var(--amber-dim);border-radius:4px;padding:1px 5px;flex:0 0 auto
+}
+.hint-name{font-size:12.5px;color:var(--fg);flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hint-cost{font-family:var(--mono);font-size:11px;color:var(--fg-3);flex:0 0 auto}
+.hint-cost.paid{color:#E0775A}
+.hint-body{padding:0 10px 10px;display:none}
+.hint.on .hint-body,.hint.expand .hint-body{display:block}
+.hint-note{font-size:11px;line-height:1.6;color:var(--fg-2)}
+.hint-note.warn{color:#E0A05A}
+.hint-empty{
+  font-size:11.5px;color:var(--fg-3);border:1px dashed rgba(255,255,255,.1);
+  border-radius:7px;padding:7px 9px;line-height:1.55
+}
+.slider-row{display:flex;align-items:center;gap:9px;margin-top:4px}
+.slider-row input[type=range]{flex:1 1 auto;-webkit-appearance:none;height:3px;border-radius:3px;background:rgba(255,255,255,.14);outline:none}
+.slider-row input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--amber);cursor:pointer;box-shadow:0 0 8px var(--amber-glow)
+}
+.slider-row input[type=range]::-moz-range-thumb{
+  width:13px;height:13px;border:none;border-radius:50%;background:var(--amber);cursor:pointer
+}
+.slider-val{font-family:var(--mono);font-size:11px;color:var(--fg-2);width:34px;text-align:right;flex:0 0 auto}
+/* 开关 */
+.switch{position:relative;width:36px;height:20px;flex:0 0 auto;cursor:pointer}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.switch i{
+  position:absolute;inset:0;border-radius:20px;background:rgba(255,255,255,.13);
+  transition:background .2s;display:block
+}
+.switch i::after{
+  content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#8A97A5;transition:transform .2s,background .2s
+}
+.switch input:checked+i{background:rgba(240,166,58,.34)}
+.switch input:checked+i::after{transform:translateX(16px);background:var(--amber);box-shadow:0 0 9px var(--amber-glow)}
+.switch input:disabled+i{opacity:.4;cursor:not-allowed}
+.switch.disabled{cursor:not-allowed}
+/* 作答区 */
+.answer{border-top:1px solid var(--line);padding:10px;flex:0 0 auto;background:rgba(7,12,17,.4)}
+.answer-lbl{font-size:10.5px;letter-spacing:.18em;color:var(--fg-3);margin:0 0 6px 2px}
+.sel{
+  width:100%;padding:9px 10px;margin-bottom:8px;font-size:12.5px;
+  background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.1);border-radius:7px;
+  color:var(--fg);appearance:none;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,var(--fg-3) 50%),linear-gradient(135deg,var(--fg-3) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  transition:border-color .15s
+}
+.sel:focus{outline:none;border-color:var(--amber-soft)}
+.sel:disabled{opacity:.42;cursor:not-allowed}
+.sel option{background:#0C1218;color:var(--fg)}
+.answer-btns{display:flex;gap:8px;margin-top:2px}
+.btn{
+  flex:1 1 0;padding:10px 8px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:500;
+  border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--fg);
+  transition:all .16s;letter-spacing:.04em;white-space:nowrap
+}
+.btn:hover:not(:disabled){border-color:var(--amber-soft);background:rgba(240,166,58,.12)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{
+  background:linear-gradient(180deg,rgba(240,166,58,.9),rgba(214,140,36,.9));
+  border-color:transparent;color:#1A1206;font-weight:700
+}
+.btn.primary:hover:not(:disabled){background:linear-gradient(180deg,#FFC46B,#E09A33);filter:brightness(1.04)}
+.btn.primary:disabled{background:rgba(255,255,255,.07);color:var(--fg-3)}
+.btn.ghost{flex:0 0 auto;padding:10px 13px}
+#drawer-toggle{
+  display:none;position:fixed;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));
+  z-index:1101;width:46px;height:46px;border-radius:50%;place-items:center;cursor:pointer;
+  background:rgba(11,17,23,.94);border:1px solid var(--amber-soft);color:var(--amber);
+  box-shadow:0 8px 26px rgba(0,0,0,.6)
+}
+
+/* ============================================================================
+   [06] 揭晓面板（z-index 1150） / 全屏雷达（3000） / 标题页（3200） / 弹窗（2100）
+   ========================================================================== */
+#reveal{
+  position:fixed;left:0;right:0;bottom:0;z-index:1150;pointer-events:none;
+  display:flex;justify-content:center;padding:0 12px calc(18px + env(safe-area-inset-bottom));
+}
+#reveal.show .reveal-card{transform:translateY(0);opacity:1}
+.reveal-card{
+  pointer-events:auto;width:min(560px,100%);
+  background:linear-gradient(180deg,rgba(12,18,24,.97),rgba(9,14,19,.97));
+  border:1px solid var(--line);border-top:2px solid var(--amber);border-radius:12px;
+  box-shadow:0 -6px 44px rgba(0,0,0,.62);
+  padding:14px 16px 15px;text-align:center;
+  transform:translateY(130%);opacity:0;transition:transform .55s cubic-bezier(.22,1,.36,1),opacity .4s ease
+}
+.reveal-city{
+  font-family:var(--serif);font-weight:900;color:#FFD88F;
+  font-size:clamp(30px,7vw,50px);line-height:1.12;letter-spacing:.04em;
+  text-shadow:0 0 30px rgba(240,166,58,.42);
+  opacity:0;transform:translateY(24px);
+  animation:riseIn .85s cubic-bezier(.22,1,.36,1) .12s forwards
+}
+@keyframes riseIn{to{opacity:1;transform:translateY(0)}}
+.reveal-prov{font-size:12px;color:var(--fg-2);letter-spacing:.24em;margin-top:5px;opacity:0;animation:riseIn .7s ease .3s forwards}
+.reveal-rows{margin:13px 0 4px;text-align:left;display:grid;gap:6px}
+.rrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--fg-2)}
+.rrow .k{display:flex;align-items:center;gap:7px}
+.rrow .v{font-family:var(--mono);font-size:13px;color:var(--fg)}
+.rrow.big .v{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--amber)}
+.dot{width:7px;height:7px;border-radius:50%;background:#E0775A;flex:0 0 auto}
+.dot.ok{background:#5FBF8A}
+.reveal-verdict{font-family:var(--serif);font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--fg);margin-top:8px;opacity:0;animation:riseIn .7s ease .45s forwards}
+.reveal-btn{margin-top:13px;display:flex;gap:9px}
+.reveal-btn .btn{opacity:0;animation:riseIn .7s ease .55s forwards}
+
+/* 开场雷达 */
+#radar{
+  position:fixed;inset:0;z-index:3000;display:none;place-items:center;
+  background:radial-gradient(circle at 50% 50%,#0B1219 0%,#05090D 75%);
+}
+#radar.on{display:grid}
+#radar.out{animation:radarOut .55s ease forwards}
+@keyframes radarOut{to{opacity:0;transform:scale(.72)}}
+.radar-box{position:relative;width:min(76vmin,540px);aspect-ratio:1/1;display:grid;place-items:center}
+.radar-sweep{
+  position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(240,166,58,.34) 0deg,rgba(240,166,58,.11) 26deg,transparent 62deg,transparent 360deg);
+  animation:sweep 1.5s linear infinite;mask:radial-gradient(circle,#000 62%,transparent 71%);
+  -webkit-mask:radial-gradient(circle,#000 62%,transparent 71%)
+}
+@keyframes sweep{to{transform:rotate(360deg)}}
+.radar-ring{position:absolute;border-radius:50%;border:1px solid rgba(240,166,58,.2)}
+.radar-ring.r1{inset:0;border-color:rgba(240,166,58,.34)}
+.radar-ring.r2{inset:16%}
+.radar-ring.r3{inset:33%}
+.radar-ring.r4{inset:50%}
+.radar-cross{position:absolute;background:rgba(240,166,58,.18)}
+.radar-cross.h{left:0;right:0;height:1px;top:50%}
+.radar-cross.v{top:0;bottom:0;width:1px;left:50%}
+.radar-core{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 16px var(--amber)}
+.radar-readout{
+  position:absolute;bottom:-32px;left:0;right:0;text-align:center;
+  font-family:var(--mono);font-size:12px;color:var(--amber-soft);letter-spacing:.12em
+}
+.radar-label{
+  position:absolute;top:-34px;left:0;right:0;text-align:center;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.34em;color:var(--amber)
+}
+
+/* 标题页 */
+#title{
+  position:fixed;inset:0;z-index:3200;display:grid;place-items:center;padding:20px;
+  background:radial-gradient(circle at 50% 38%,#101B24 0%,#070C11 62%,#05080B 100%);
+  transition:opacity .5s ease,visibility .5s
+}
+#title.hide{opacity:0;visibility:hidden}
+.title-card{width:min(430px,100%);text-align:center}
+.title-grid-bg{
+  position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(rgba(240,166,58,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(240,166,58,.055) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask:radial-gradient(circle at 50% 45%,#000 5%,transparent 72%);
+  -webkit-mask:radial-gradient(circle at 50% 45%,#000 5%,transparent 72%)
+}
+.title-mark{display:inline-grid;place-items:center;width:52px;height:52px;border:1px solid var(--amber-soft);border-radius:13px;color:var(--amber);margin-bottom:16px;box-shadow:0 0 34px rgba(240,166,58,.16) inset}
+.title-mark svg{width:26px;height:26px}
+.title-h{
+  font-family:var(--serif);font-weight:900;font-size:clamp(38px,10vw,54px);
+  letter-spacing:.16em;margin:0 0 8px;color:#F4F8FB;text-indent:.16em;
+  text-shadow:0 0 42px rgba(240,166,58,.22)
+}
+.title-sub{font-size:12px;letter-spacing:.4em;color:var(--amber);margin-bottom:26px;text-indent:.4em}
+.stats{
+  border:1px solid var(--line);border-radius:11px;overflow:hidden;
+  background:rgba(9,14,19,.6);margin-bottom:22px
+}
+.stats-row{display:flex;border-bottom:1px solid rgba(255,255,255,.05)}
+.stats-row:last-child{border-bottom:none}
+.stat{flex:1 1 0;padding:13px 6px;text-align:center;border-right:1px solid rgba(255,255,255,.05)}
+.stat:last-child{border-right:none}
+.stat .n{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--amber);line-height:1.1}
+.stat .n.sm{font-size:15px}
+.stat .l{font-size:10.5px;color:var(--fg-3);margin-top:5px;letter-spacing:.1em}
+.title-actions{display:grid;gap:9px}
+.title-actions .btn{padding:13px;font-size:14px}
+.title-foot{margin-top:18px;font-size:11px;color:var(--fg-3);line-height:1.75}
+.title-foot a{color:var(--amber-soft);text-decoration:none}
+
+/* 设置弹窗 */
+#modal{
+  position:fixed;inset:0;z-index:2100;display:none;place-items:center;padding:20px;
+  background:rgba(3,6,9,.72);backdrop-filter:blur(3px)
+}
+#modal.on{display:grid}
+.modal-card{
+  width:min(400px,100%);background:var(--panel-solid);
+  border:1px solid var(--line);border-radius:12px;padding:18px;
+  box-shadow:0 24px 70px rgba(0,0,0,.7)
+}
+.modal-card h3{margin:0 0 4px;font-size:14.5px;font-family:var(--serif);letter-spacing:.08em}
+.modal-card p{margin:0 0 14px;font-size:11.5px;line-height:1.75;color:var(--fg-2)}
+.modal-card code{font-family:var(--mono);font-size:11px;color:var(--amber-soft)}
+.txt{
+  width:100%;padding:10px;font-family:var(--mono);font-size:12px;
+  background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.11);
+  border-radius:7px;color:var(--fg);outline:none;transition:border-color .15s
+}
+.txt:focus{border-color:var(--amber-soft)}
+.modal-btns{display:flex;gap:9px;margin-top:14px}
+.link{color:var(--amber-soft);text-decoration:none;border-bottom:1px dotted var(--amber-dim)}
+
+/* toast（z-index 2500） */
+#toast{
+  position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:2500;
+  display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;
+  width:max-content;max-width:min(90vw,440px)
+}
+.toast{
+  padding:10px 15px;border-radius:8px;font-size:12.5px;line-height:1.5;
+  background:rgba(11,17,23,.96);border:1px solid var(--line);color:var(--fg);
+  box-shadow:0 10px 32px rgba(0,0,0,.6);
+  animation:toastIn .3s ease;display:flex;align-items:center;gap:9px
+}
+.toast.err{border-color:rgba(224,119,90,.55)}
+.toast.err .ico{color:#E0775A}
+.toast.warn{border-color:var(--amber-soft)}
+.toast.warn .ico,.toast.ok .ico{color:var(--amber)}
+.toast.ok{border-color:rgba(95,191,138,.5)}
+.toast.out{animation:toastOut .3s ease forwards}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-8px)}}
+
+/* 扫描进度条 */
+.scan{position:fixed;left:0;top:0;height:2px;z-index:2600;background:var(--amber);width:0;opacity:0;transition:width .3s ease,opacity .3s;box-shadow:0 0 12px var(--amber-glow)}
+.scan.on{opacity:1}
+
+/* 移动端：情报面板 → 底部抽屉 */
+@media (max-width:900px){
+  .hud-item.hide-sm{display:none}
+  #intel{
+    top:auto;left:0;right:0;bottom:0;width:100%;max-height:74vh;
+    border-radius:14px 14px 0 0;border-left:none;border-right:none;border-bottom:none;
+    transform:translateY(calc(100% - 0px));padding-bottom:env(safe-area-inset-bottom)
+  }
+  #intel.open{transform:translateY(0)}
+  #drawer-toggle{display:grid}
+  #intel.open+#drawer-toggle{opacity:0;pointer-events:none}
+  #reveal{padding-bottom:calc(70px + env(safe-area-inset-bottom))}
+  .leaflet-control-zoom{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  #ring{animation:none}
+  .radar-sweep{animation:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ===================== 地图底图 ===================== -->
+<div id="map" role="application" aria-label="侦察地图"></div>
+
+<!-- ===================== 蒙版 + 描边环 ===================== -->
+<div id="mask"></div>
+<div id="ring"></div>
+
+<!-- ===================== 顶部 HUD ===================== -->
+<header id="hud">
+  <div class="hud-left">
+    <span class="hud-brand">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 3 2.6 15 0 18M12 3c-2.6 3-2.6 15 0 18"/></svg>
+      <span>图寻华夏</span>
+    </span>
+    <span class="hud-sep"></span>
+    <span class="hud-item">回合 <b id="hud-round" class="mono">--</b></span>
+    <span class="hud-item hide-sm">得分 <b id="hud-score" class="mono amber">0</b></span>
+    <span class="hud-item">剩余满分 <b id="hud-max" class="mono">1000</b></span>
+  </div>
+  <div class="hud-right">
+    <button id="btn-settings" class="icon-btn" title="设置" aria-label="设置">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ===================== 右侧情报面板 ===================== -->
+<aside id="intel" aria-label="情报面板">
+  <div class="intel-head">
+    <span class="t">情报面板</span>
+    <span id="intel-status">待命</span>
+  </div>
+  <div class="intel-scroll" id="intel-scroll">
+    <!-- 五级提示由 JS 渲染 -->
+  </div>
+  <div class="answer">
+    <p class="answer-lbl">目标判定</p>
+    <select id="sel-prov" class="sel" aria-label="选择省份"><option value="">选择省份</option></select>
+    <select id="sel-city" class="sel" aria-label="选择城市" disabled><option value="">选择城市</option></select>
+    <div class="answer-btns">
+      <button id="btn-submit" class="btn primary" disabled>提交答案</button>
+      <button id="btn-skip" class="btn ghost" disabled>跳过</button>
+    </div>
+  </div>
+</aside>
+<button id="drawer-toggle" title="情报面板" aria-label="情报面板">
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+</button>
+
+<!-- ===================== 揭晓面板 ===================== -->
+<div id="reveal">
+  <div class="reveal-card">
+    <div class="reveal-city" id="reveal-city"></div>
+    <div class="reveal-prov" id="reveal-prov"></div>
+    <div class="reveal-rows" id="reveal-rows"></div>
+    <div class="reveal-verdict" id="reveal-verdict"></div>
+    <div class="reveal-btn">
+      <button id="btn-next" class="btn primary">下一城</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 开场雷达 ===================== -->
+<div id="radar">
+  <div class="radar-box">
+    <div class="radar-label">SATELLITE RECON</div>
+    <div class="radar-ring r1"></div>
+    <div class="radar-ring r2"></div>
+    <div class="radar-ring r3"></div>
+    <div class="radar-ring r4"></div>
+    <div class="radar-cross h"></div>
+    <div class="radar-cross v"></div>
+    <div class="radar-sweep"></div>
+    <div class="radar-core"></div>
+    <div class="radar-readout mono" id="radar-readout">LAT --.----  LON ---.----  ALT 0000</div>
+  </div>
+</div>
+
+<!-- ===================== 标题页 ===================== -->
+<div id="title">
+  <div class="title-grid-bg"></div>
+  <div class="title-card">
+    <div class="title-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.4"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg>
+    </div>
+    <h1 class="title-h">图寻华夏</h1>
+    <div class="title-sub">SATELLITE RECON</div>
+    <div class="stats">
+      <div class="stats-row">
+        <div class="stat"><div class="n" id="st-score">0</div><div class="l">总分</div></div>
+        <div class="stat"><div class="n" id="st-rounds">0</div><div class="l">回合数</div></div>
+        <div class="stat"><div class="n" id="st-avg">0</div><div class="l">平均得分</div></div>
+      </div>
+      <div class="stats-row">
+        <div class="stat"><div class="n sm" id="st-city">--</div><div class="l">城市命中率</div></div>
+        <div class="stat"><div class="n sm" id="st-prov">--</div><div class="l">省份命中率</div></div>
+      </div>
+    </div>
+    <div class="title-actions">
+      <button id="btn-start" class="btn primary">开始侦察</button>
+      <button id="btn-reset" class="btn">重置战绩</button>
+    </div>
+    <div class="title-foot">
+      通过卫星影像推断目标城市 · 五级情报逐级解锁 · 每级扣减剩余满分<br>
+      <a href="https://console.amap.com" target="_blank" rel="noopener">配置高德 Web服务 Key</a> 后解锁 POI 情报
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 设置弹窗 ===================== -->
+<div id="modal">
+  <div class="modal-card">
+    <h3>高德地图 Key</h3>
+    <p>
+      Lv.3「POI 情报」需要高德开放平台「<b>Web服务</b>」类型 Key。<br>
+      前往 <a class="link" href="https://console.amap.com" target="_blank" rel="noopener">console.amap.com</a> 创建应用 → 添加 Key → 服务平台选择「Web服务」。<br>
+      保存于本机 <code>localStorage</code>，不会上传。
+    </p>
+    <input id="key-input" class="txt" type="text" placeholder="粘贴高德 Web服务 Key" autocomplete="off" spellcheck="false">
+    <div class="modal-btns">
+      <button id="btn-key-save" class="btn primary">保存</button>
+      <button id="btn-key-cancel" class="btn">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 扫描进度条 / toast ===================== -->
+<div class="scan" id="scan"></div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* 依赖兜底：主源不可用（离线 / 证书被拦截 / CDN 故障）时自动切换备用源。
+   Leaflet 与 Turf.js 版本保持与主源完全一致。 */
+(function () {
+  function dw(u) { document.write('<scr' + 'ipt src="' + u + '"><\/scr' + 'ipt>'); }
+  if (typeof window.L === 'undefined') dw('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js');
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<script>
+(function () {
+  function dw(u) { document.write('<scr' + 'ipt src="' + u + '"><\/scr' + 'ipt>'); }
+  if (typeof window.turf === 'undefined') dw('https://unpkg.com/@turf/turf@6/turf.min.js');
+})();
+</script>
+<script>
+"use strict";
+/* ============================================================================
+   《图寻华夏》— 卫星影像地理侦察游戏
+   全部业务逻辑封装于 IIFE，避免污染全局。
+   ========================================================================== */
+(function () {
+/* ============================================================================
+ * [A] 配置 / 常量表 / 存储 / 工具 / UI 基础
+ * ==========================================================================*/
+
+/* --- A.1 全局配置（一处修改即可调整手感） ------------------------------- */
+var CONFIG = {
+  /* 数据源：DataV 行政区边界（_full 变体才可用；非 _full 返回 403） */
+  DATA_BASE: 'https://geo.datav.aliyun.com/areas_v3/bound/',
+  CHINA_CODE: '100000',
+
+  /* 本地存储键名 */
+  STATS_KEY: 'geoxun_stats_v1',
+  AMAP_KEY_STORE: 'geoxun_amap_key_v1',
+
+  /* 计分口径 E */
+  MAX_SCORE: 1000,          // 满分基准
+  SCORE_FLOOR: 100,         // 扣分后的保底
+  CITY_WRONG_RATIO: 0.4,    // 省对市错时按 40% 计
+
+  /* 五级情报：解锁即永久扣分。Lv.1 初始解锁且 cost=0（口径 C） */
+  /* 规格书扣分表：Lv.1 不计分（口径 C），Lv.2~Lv.5 合计 1150。
+     五级全开时 base = max(1000 - 1150, 100) = 100，即规格书写明的全开下限 100 分。 */
+  HINTS: [
+    { level: 1, name: '卫星影像',   cost: 0   },
+    { level: 2, name: '道路与水系', cost: 150 },
+    { level: 3, name: '周边 POI',   cost: 500 },
+    { level: 4, name: '市域边界',   cost: 250 },
+    { level: 5, name: '省域轮廓',   cost: 250 }
+  ],
+
+  /* 落点圆：R = clamp(RATIO * bbox对角线(米), MIN, MAX) */
+  RADIUS_RATIO: 0.18,
+  RADIUS_MIN: 6000,
+  RADIUS_MAX: 25000,
+
+  /* 缩放约束 */
+  ZOOM_MIN_LV1: 12,         // 圆内可缩放范围下界
+  ZOOM_MAX: 17,
+  ZOOM_MIN_LV4: 9,
+  ZOOM_MIN_LV5: 6,
+
+  MAXBOUNDS_FACTOR: 2.2,    // 初始 maxBounds = 圆心 ± 2.2R 方形
+  MAXBOUNDS_PAD: 0.2,       // Lv.4 市 bbox 外扩 20%
+
+  PROV_TRY_MAX: 8,          // 换省重试上限
+  LANDING_TRIES: 200,       // 落点采样重试上限
+  MASK_ANIM_MS: 600,        // 蒙版扩张动画时长
+  POI_RADIUS: 1000          // POI 搜索半径（米）
+};
+
+/* --- A.2 底图瓦片（高德 GCJ-02，均 256×256 已实测） ---------------------- */
+var TILES = {
+  /* 卫星影像，无标注文字 */
+  sat: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+  /* 路网透明叠层，ltype=11 无文字 */
+  road: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&ltype=11&x={x}&y={y}&z={z}',
+  subdomains: '1234'
+};
+
+/* --- A.3 省级 adcode 表（34 项，附录 B；名称为网页面板用全称） ---------- */
+var PROVINCES = [
+  { code: '110000', name: '北京市' },
+  { code: '120000', name: '天津市' },
+  { code: '130000', name: '河北省' },
+  { code: '140000', name: '山西省' },
+  { code: '150000', name: '内蒙古自治区' },
+  { code: '210000', name: '辽宁省' },
+  { code: '220000', name: '吉林省' },
+  { code: '230000', name: '黑龙江省' },
+  { code: '310000', name: '上海市' },
+  { code: '320000', name: '江苏省' },
+  { code: '330000', name: '浙江省' },
+  { code: '340000', name: '安徽省' },
+  { code: '350000', name: '福建省' },
+  { code: '360000', name: '江西省' },
+  { code: '370000', name: '山东省' },
+  { code: '410000', name: '河南省' },
+  { code: '420000', name: '湖北省' },
+  { code: '430000', name: '湖南省' },
+  { code: '440000', name: '广东省' },
+  { code: '450000', name: '广西壮族自治区' },
+  { code: '460000', name: '海南省' },
+  { code: '500000', name: '重庆市' },
+  { code: '510000', name: '四川省' },
+  { code: '520000', name: '贵州省' },
+  { code: '530000', name: '云南省' },
+  { code: '540000', name: '西藏自治区' },
+  { code: '610000', name: '陕西省' },
+  { code: '620000', name: '甘肃省' },
+  { code: '630000', name: '青海省' },
+  { code: '640000', name: '宁夏回族自治区' },
+  { code: '650000', name: '新疆维吾尔自治区' },
+  { code: '710000', name: '台湾省' },
+  { code: '810000', name: '香港特别行政区' },
+  { code: '820000', name: '澳门特别行政区' }
+];
+/* 直辖市 / 港澳：_full 返回 district 级 → 合并整市，市下拉仅一项（口径 A） */
+var MUNICIPALITIES = { '110000': 1, '120000': 1, '310000': 1, '500000': 1, '810000': 1, '820000': 1 };
+
+function provName(code) {
+  for (var i = 0; i < PROVINCES.length; i++) if (PROVINCES[i].code === code) return PROVINCES[i].name;
+  return '';
+}
+
+/* --- A.4 存储 ------------------------------------------------------------ */
+var Store = {
+  readStats: function () {
+    var d = { totalScore: 0, rounds: 0, cityCorrect: 0, provCorrect: 0 };
+    try {
+      var raw = localStorage.getItem(CONFIG.STATS_KEY);
+      if (raw) {
+        var o = JSON.parse(raw);
+        if (o && typeof o === 'object') {
+          d.totalScore = +o.totalScore || 0;
+          d.rounds = +o.rounds || 0;
+          d.cityCorrect = +o.cityCorrect || 0;
+          d.provCorrect = +o.provCorrect || 0;
+        }
+      }
+    } catch (e) { /* 隐私模式等：静默使用默认值 */ }
+    return d;
+  },
+  writeStats: function (s) {
+    try { localStorage.setItem(CONFIG.STATS_KEY, JSON.stringify(s)); } catch (e) {}
+  },
+  readKey: function () {
+    try { return localStorage.getItem(CONFIG.AMAP_KEY_STORE) || ''; } catch (e) { return ''; }
+  },
+  writeKey: function (k) {
+    try {
+      if (k) localStorage.setItem(CONFIG.AMAP_KEY_STORE, k);
+      else localStorage.removeItem(CONFIG.AMAP_KEY_STORE);
+    } catch (e) {}
+  }
+};
+
+/* --- A.5 通用工具 -------------------------------------------------------- */
+function $(id) { return document.getElementById(id); }
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+/* 数值滚动动画（用于得分揭晓） */
+function rollNumber(el, from, to, ms) {
+  var t0 = 0;
+  function step(t) {
+    if (!t0) t0 = t;
+    var p = Math.min(1, (t - t0) / ms);
+    var e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    el.textContent = String(Math.round(from + (to - from) * e));
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+/* 线性缓动播放（蒙版扩张 / 描线等） */
+function animate(durationMs, onFrame, onDone) {
+  var t0 = 0, raf = 0, cancelled = false;
+  function step(t) {
+    if (cancelled) return;
+    if (!t0) t0 = t;
+    var p = Math.min(1, (t - t0) / durationMs);
+    onFrame(p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2); // easeInOutQuad
+    if (p < 1) raf = requestAnimationFrame(step);
+    else if (onDone) onDone();
+  }
+  raf = requestAnimationFrame(step);
+  return function cancel() { cancelled = true; cancelAnimationFrame(raf); };
+}
+
+/* --- A.6 UI 基础：toast / 进度条 / 状态文本 ------------------------------ */
+var ICONS = {
+  info: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r=".9" fill="currentColor" stroke="none"/></svg>',
+  warn: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 21 19.5H3z"/><path d="M12 9.5v4.2"/><circle cx="12" cy="16.7" r=".9" fill="currentColor" stroke="none"/></svg>',
+  err:  '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>',
+  ok:   '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg>'
+};
+
+var UI = {
+  /* toast 节流：同一文案 3.5s 内不重复弹出，避免瓦片错误刷屏 */
+  _last: {}, _lastAt: 0,
+  toast: function (msg, type, ms) {
+    type = type || 'info';
+    var now = Date.now();
+    if (this._last[msg] && now - this._last[msg] < 3500) return;
+    this._last[msg] = now;
+    var box = $('toast');
+    // 最多同时显示 3 条
+    while (box.children.length >= 3) box.removeChild(box.firstChild);
+    var d = document.createElement('div');
+    d.className = 'toast ' + type;
+    d.innerHTML = ICONS[type] || ICONS.info;   // 仅静态图标
+    var s = document.createElement('span');
+    s.textContent = msg;                        // 文本一律 textContent，杜绝注入
+    d.appendChild(s);
+    box.appendChild(d);
+    setTimeout(function () {
+      d.classList.add('out');
+      setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 320);
+    }, ms || 4200);
+  },
+  scan: function (on) { $('scan').classList.toggle('on', !!on); if (!on) $('scan').style.width = '0%'; },
+  scanPct: function (p) { $('scan').classList.add('on'); $('scan').style.width = clamp(p, 0, 100) + '%'; },
+  status: function (t) { $('intel-status').textContent = t; }
+};
+
+/* --- A.7 全局可变状态 ---------------------------------------------------- */
+var state = {
+  stats: null,
+  round: 0,
+  score: 0,
+  unlocked: {},        // { 2:true, ... } 已解锁等级（解锁后永久生效，开关不退款）
+  deduction: 0,
+  answer: null,        // 出题后写入：{ provCode, provName, cityName, coords, bbox, point }
+  cityCache: {},       // provCode -> GeoJSON（供市下拉与重绘）
+  map: null,
+  centerLatLng: null,  // 落点圆心（Leaflet LatLng）
+  baseRadius: 0,       // 初始地理半径（米）
+  maskRadius: 0,       // 当前蒙版地理半径（米，随等级放大）
+  fitZoom: 12,         // 本回合「圆完整落在视口内」的缩放（由 zoomForRadius 求出）
+  maskActive: false,
+  answered: false,
+  busy: false,         // 出题中，防重入
+  poiEnabled: false,
+  layers: { sat: null, road: null, poi: null, city: null, prov: null, highlight: null },
+  maskRaf: 0
+};
+
+/* ============================================================================
+ * [B] GEO 模块：数据获取 / 几何合并 / 随机落点 / 出题
+ * ==========================================================================*/
+
+/* --- B.1 带超时与错误分类的 JSON 请求 ------------------------------------ */
+function fetchJSON(url, timeoutMs) {
+  return new Promise(function (resolve, reject) {
+    var done = false;
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (done) return; done = true;
+      if (ctrl) try { ctrl.abort(); } catch (e) {}
+      var e = new Error('timeout'); e.kind = 'timeout'; reject(e);
+    }, timeoutMs || 15000);
+
+    var opt = ctrl ? { signal: ctrl.signal, cache: 'force-cache' } : undefined;
+    fetch(url, opt).then(function (r) {
+      if (done) return;
+      if (!r.ok) {
+        done = true; clearTimeout(timer);
+        var e = new Error('HTTP ' + r.status); e.kind = 'http'; e.status = r.status;
+        reject(e); return;
+      }
+      return r.json().then(function (j) {
+        if (done) return; done = true; clearTimeout(timer); resolve(j);
+      }, function () {
+        if (done) return; done = true; clearTimeout(timer);
+        var e = new Error('bad json'); e.kind = 'json'; reject(e);
+      });
+    }).catch(function (err) {
+      if (done) return; done = true; clearTimeout(timer);
+      var e = new Error('network'); e.kind = 'network'; e.orig = err; reject(e);
+    });
+  });
+}
+
+/* 本次会话内“确定性不可用”的省份（HTTP 404/403，如台湾 710000 返回 404）。
+   网络抖动类失败不写入，避免误伤。 */
+var provDead = {};
+
+/* --- B.2 省级边界加载（带缓存） -----------------------------------------
+   请求 URL 只含数字 adcode —— 绝不出现任何名称，满足防泄题要求。 */
+function loadProvince(code) {
+  if (state.cityCache[code]) return Promise.resolve(state.cityCache[code]);
+  var url = CONFIG.DATA_BASE + String(code) + '_full.json';
+  return fetchJSON(url, 15000).then(function (gj) {
+    if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) {
+      var e = new Error('empty'); e.kind = 'empty'; throw e;
+    }
+    state.cityCache[code] = gj;
+    return gj;
+  });
+}
+
+/* --- B.3 几何工具 ------------------------------------------------------- */
+/* 所有 feature 的 geometry 均为 MultiPolygon（已实测），故直接拼接 coordinates。
+   得到 MultiPolygon 的 coordinates： [ polygon, polygon, ... ] */
+function mergeCoords(features) {
+  var out = [];
+  for (var i = 0; i < features.length; i++) {
+    var g = features[i] && features[i].geometry;
+    if (!g) continue;
+    if (g.type === 'MultiPolygon') out = out.concat(g.coordinates);
+    else if (g.type === 'Polygon') out.push(g.coordinates);
+  }
+  return out;
+}
+
+/* 手工求 bbox，避免 turf 在退化环上抛错 */
+function coordsBBox(coords) {
+  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (var i = 0; i < coords.length; i++) {
+    var rings = coords[i];
+    for (var j = 0; j < rings.length; j++) {
+      var ring = rings[j];
+      for (var k = 0; k < ring.length; k++) {
+        var x = ring[k][0], y = ring[k][1];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  return [minX, minY, maxX, maxY];
+}
+
+/* bbox 对角线真实米数（用 turf.distance，不得用度数当米） */
+function bboxDiagonalMeters(bbox) {
+  try {
+    return turf.distance(turf.point([bbox[0], bbox[1]]), turf.point([bbox[2], bbox[3]]), { units: 'meters' });
+  } catch (e) {
+    return 20000;
+  }
+}
+
+/* --- B.4 随机落点（口径 D，关键算法） ------------------------------------
+   绝不使用“整市 bbox 随机采样”，否则三沙、舟山这类群岛市会大量落到海里。
+   步骤：多边形按 turf.area 面积加权随机选 → 在该多边形自己的 bbox 内
+   turf.randomPosition 取点 → booleanPointInPolygon 校验是否落在“这个多边形”内
+   → 未命中重试（≤200 次）→ 兜底取最大多边形的 centerOfMass。 */
+function pickLandingPoint(coords) {
+  if (!coords || !coords.length) return null;
+  var polys = [], areas = [], total = 0, i, j;
+  for (i = 0; i < coords.length; i++) {
+    var rings = coords[i];
+    if (!rings || !rings.length || !rings[0] || rings[0].length < 4) continue;
+    var f;
+    try { f = turf.polygon(rings); } catch (e) { continue; }
+    var a;
+    try { a = turf.area(f); } catch (e) { a = 0; }
+    if (!(a > 0)) a = 1e-9;   // 退化多边形给极小权重：可能被选中但不主导分布
+    polys.push(f); areas.push(a); total += a;
+  }
+  if (!polys.length) return null;
+
+  for (var t = 0; t < CONFIG.LANDING_TRIES; t++) {
+    // 面积加权随机挑一个多边形
+    var r = Math.random() * total, idx = 0, acc = 0;
+    for (j = 0; j < areas.length; j++) { acc += areas[j]; idx = j; if (r <= acc) break; }
+    var poly = polys[idx], bb, pt;
+    try { bb = turf.bbox(poly); } catch (e) { continue; }
+    pt = turf.randomPosition(bb);
+    /* 注意：turf v6 的 randomPosition 返回的是坐标数组 [lng,lat]，
+       而 v7 返回 Point Feature —— 这里两种形态都兼容，避免误判。 */
+    var pc = (pt && pt.geometry && pt.geometry.coordinates) ? pt.geometry.coordinates : pt;
+    if (!pc || typeof pc[0] !== 'number' || typeof pc[1] !== 'number') continue;
+    // 必须落在“该多边形”内（而不是整市 bbox 内）
+    var inside = false;
+    try { inside = turf.booleanPointInPolygon(turf.point(pc), poly); } catch (e) { inside = false; }
+    if (inside) return pc;
+  }
+  // 兜底：面积最大多边形的质心（可能是凹岸外，但绝不退化成“市中心”）
+  var best = 0;
+  for (i = 1; i < areas.length; i++) if (areas[i] > areas[best]) best = i;
+  try { return turf.centerOfMass(polys[best]).geometry.coordinates; }
+  catch (e) {
+    try { return turf.centerOfMass(polys[0]).geometry.coordinates; } catch (e2) { return null; }
+  }
+}
+
+/* --- B.5 出题 ----------------------------------------------------------- */
+function shuffle(a) {
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+/* 市下拉选项：直辖市/港澳按口径 A 只有一项（整市） */
+function cityNames(gj, provCode) {
+  if (MUNICIPALITIES[provCode]) return [provName(provCode)];
+  var names = [];
+  for (var i = 0; i < gj.features.length; i++) {
+    var n = gj.features[i] && gj.features[i].properties && gj.features[i].properties.name;
+    if (n && names.indexOf(n) < 0) names.push(n);
+  }
+  names.sort(function (a, b) { return a.localeCompare(b, 'zh-Hans-CN'); });
+  return names;
+}
+
+/* 由省表 + GeoJSON 组装一道题的答案对象（名称只进 JS 变量，绝不进 DOM） */
+function buildAnswer(prov, gj) {
+  var isMuni = !!MUNICIPALITIES[prov.code];
+  var coords, cityName;
+
+  if (isMuni) {
+    // 口径 A：直辖市/港澳 _full 返回 district 级 → 合并全部 feature 为整市
+    coords = mergeCoords(gj.features);
+    cityName = prov.name;
+  } else {
+    var feats = gj.features.filter(function (f) { return f && f.geometry; });
+    if (!feats.length) { var e1 = new Error('no city'); e1.kind = 'empty'; throw e1; }
+    var feat = feats[Math.floor(Math.random() * feats.length)];
+    coords = mergeCoords([feat]);
+    cityName = (feat.properties && feat.properties.name) || '';
+    if (!cityName) { var e2 = new Error('no name'); e2.kind = 'empty'; throw e2; }
+  }
+  if (!coords || !coords.length) { var e3 = new Error('no coords'); e3.kind = 'empty'; throw e3; }
+
+  var pt = pickLandingPoint(coords);
+  if (!pt) { var e4 = new Error('no point'); e4.kind = 'empty'; throw e4; }
+
+  var bbox = coordsBBox(coords);
+  var diag = bboxDiagonalMeters(bbox);
+  // 圆半径：clamp(0.18 × 对角线米数, 6km, 25km)
+  var R = clamp(CONFIG.RADIUS_RATIO * diag, CONFIG.RADIUS_MIN, CONFIG.RADIUS_MAX);
+
+  return {
+    provCode: prov.code,
+    provName: prov.name,
+    cityName: cityName,
+    coords: coords,
+    bbox: bbox,
+    point: pt,          // [lng, lat]
+    radius: R,
+    isMuni: isMuni,
+    cities: cityNames(gj, prov.code)
+  };
+}
+
+/* 抽题：随机省 → 失败静默换省，最多 CONFIG.PROV_TRY_MAX 次 */
+function rollQuestion() {
+  return new Promise(function (resolve, reject) {
+    var pool = shuffle(PROVINCES.filter(function (p) { return !provDead[p.code]; }));
+    var idx = 0, tries = 0, sawNetwork = false, lastErr = null;
+
+    function next() {
+      if (idx >= pool.length || tries >= CONFIG.PROV_TRY_MAX) {
+        var e = new Error('all failed');
+        e.kind = sawNetwork ? 'network' : 'data';
+        e.last = lastErr;
+        reject(e); return;
+      }
+      var prov = pool[idx++]; tries++;
+      loadProvince(prov.code).then(function (gj) {
+        var ans;
+        try { ans = buildAnswer(prov, gj); }
+        catch (err) { lastErr = err; next(); return; }
+        resolve(ans);
+      }).catch(function (err) {
+        lastErr = err;
+        if (err.kind === 'network' || err.kind === 'timeout') sawNetwork = true;
+        // 404/403 视为该省确定性不可用（如台湾），本会话不再尝试
+        if (err.kind === 'http' && (err.status === 404 || err.status === 403)) provDead[prov.code] = 1;
+        next();
+      });
+    }
+    next();
+  });
+}
+
+/* ============================================================================
+ * [C] 地图 / 蒙版 / 图层模块
+ * ==========================================================================*/
+
+/* --- C.1 蒙版与描边环的几何同步（关键点） --------------------------------
+   蒙版的洞以「落点圆心」为基准，每帧按当前地图视口换算为屏幕像素：
+     · 圆心屏幕坐标  → map.latLngToContainerPoint(圆心)
+     · 半径屏幕像素  → 取正东方向 R 米处的点，投影后与圆心求像素距离
+       （Web 墨卡托共形，小范围内东西/南北像素比例一致，方向无关）
+   地图关闭了 CSS 缩放动画（见 MapCtl.init），move/zoom 事件与视图严格同步，
+   因此不需要额外的补偿变换。 */
+function updateMask() {
+  var map = state.map;
+  if (!map || !state.centerLatLng || !state.maskActive) return;
+  var c = state.centerLatLng;
+  var cp = map.latLngToContainerPoint(c);
+  var r = 0;
+  var Rm = Math.max(0, state.maskRadius || 0);
+  if (Rm > 0) {
+    var edge = turf.destination(turf.point([c.lng, c.lat]), Rm, 90, { units: 'meters' });
+    var ec = edge.geometry.coordinates;
+    var ep = map.latLngToContainerPoint(L.latLng(ec[1], ec[0]));
+    r = cp.distanceTo(ep);
+  }
+  r = Math.min(r, 200000);  // 远超视口后无意义，封顶避免极端数值
+  var maskEl = $('mask'), ringEl = $('ring');
+  maskEl.style.setProperty('--cx', cp.x.toFixed(1) + 'px');
+  maskEl.style.setProperty('--cy', cp.y.toFixed(1) + 'px');
+  maskEl.style.setProperty('--r', r.toFixed(1) + 'px');
+  ringEl.style.left = cp.x.toFixed(1) + 'px';
+  ringEl.style.top = cp.y.toFixed(1) + 'px';
+  ringEl.style.width = (r * 2).toFixed(1) + 'px';
+  ringEl.style.height = (r * 2).toFixed(1) + 'px';
+  // 洞大到超过视口 85% 时隐藏描边环（此时“圆外不可见”已不适用）
+  var big = r > Math.max(window.innerWidth, window.innerHeight) * 0.85;
+  if (big !== state._ringHidden) { state._ringHidden = big; ringEl.classList.toggle('ring-hidden', big); }
+}
+function scheduleMask() {
+  if (state.maskRaf) return;
+  state.maskRaf = requestAnimationFrame(function () { state.maskRaf = 0; updateMask(); });
+}
+
+/* --- C.2 蒙版控制器 ------------------------------------------------------ */
+var Mask = {
+  show: function () {
+    state.maskActive = true;
+    $('mask').classList.remove('off');
+    $('ring').classList.remove('off');
+    scheduleMask();
+  },
+  hide: function () {
+    state.maskActive = false;
+    $('mask').classList.add('off');
+    $('ring').classList.add('off');
+  },
+  /* 设置当前地理半径（不带动画） */
+  setRadius: function (meters) { state.maskRadius = meters; scheduleMask(); },
+  /* 动画扩张到目标半径（口径 B：Lv.4 覆盖市 bbox / Lv.5 覆盖全国 bbox） */
+  expandTo: function (targetMeters, done) {
+    var from = state.maskRadius, to = targetMeters;
+    animate(CONFIG.MASK_ANIM_MS, function (e) {
+      state.maskRadius = from + (to - from) * e;
+      updateMask();
+    }, function () {
+      state.maskRadius = to;
+      updateMask();
+      if (done) done();
+    });
+  },
+  /* 由「圆心 + bbox」计算覆盖该 bbox 所需的地理半径 */
+  radiusToCover: function (bbox, fromLngLat) {
+    var corners = [
+      [bbox[0], bbox[1]], [bbox[2], bbox[1]],
+      [bbox[0], bbox[3]], [bbox[2], bbox[3]]
+    ];
+    var p0 = turf.point(fromLngLat), max = 0;
+    for (var i = 0; i < corners.length; i++) {
+      var d;
+      try { d = turf.distance(p0, turf.point(corners[i]), { units: 'meters' }); } catch (e) { d = 0; }
+      if (d > max) max = d;
+    }
+    return max * 1.06 + 1200;  // 留一点余量，确保完全包含
+  }
+};
+
+/* --- C.3 视野锁定 -------------------------------------------------------- */
+function bboxToLatLngBounds(bbox) {
+  return L.latLngBounds([bbox[1], bbox[0]], [bbox[3], bbox[2]]);
+}
+function squareBounds(c, halfMeters) {
+  var dLat = halfMeters / 111320;
+  var dLng = halfMeters / (111320 * Math.max(0.15, Math.cos(c.lat * Math.PI / 180)));
+  return L.latLngBounds([c.lat - dLat, c.lng - dLng], [c.lat + dLat, c.lng + dLng]);
+}
+var Lock = {
+  /* Lv.1 初始：圆内可缩放 [min(12, fitZoom), 17]，maxBounds = 圆心 ± 2.2R。
+     仅当 12 会把圆撑爆视口时才放宽下界到 fitZoom；能装下时规格书的 12 照旧生效。 */
+  circle: function () {
+    var m = state.map;
+    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV1, state.fitZoom));
+    m.setMaxZoom(CONFIG.ZOOM_MAX);
+    m.setMaxBounds(squareBounds(state.centerLatLng, state.baseRadius * CONFIG.MAXBOUNDS_FACTOR));
+  },
+  /* Lv.4：minZoom → min(9, fitZoom)，maxBounds → 市 bbox 外扩 20% */
+  city: function () {
+    var m = state.map, b = state.answer.bbox;
+    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV4, state.fitZoom));
+    var padX = (b[2] - b[0]) * CONFIG.MAXBOUNDS_PAD + 0.004;
+    var padY = (b[3] - b[1]) * CONFIG.MAXBOUNDS_PAD + 0.004;
+    m.setMaxBounds(L.latLngBounds([b[1] - padY, b[0] - padX], [b[3] + padY, b[2] + padX]));
+  },
+  /* Lv.5：minZoom → min(6, fitZoom)，maxBounds → 全国范围 */
+  national: function () {
+    var m = state.map;
+    m.setMinZoom(Math.min(CONFIG.ZOOM_MIN_LV5, state.fitZoom));
+    var b = state.chinaBBox || [73.4, 3.5, 135.2, 53.7];
+    var padX = (b[2] - b[0]) * 0.06, padY = (b[3] - b[1]) * 0.06;
+    m.setMaxBounds(L.latLngBounds([b[1] - padY, b[0] - padX], [b[3] + padY, b[2] + padX]));
+  },
+  /* 揭晓：解除全部限制 */
+  none: function () {
+    var m = state.map;
+    m.setMinZoom(3);
+    m.setMaxZoom(18);
+    m.setMaxBounds(null);
+  }
+};
+
+/* --- C.4 描线动画（沿路径显现） ------------------------------------------ */
+function drawOn(layer, durMs) {
+  if (!layer || !layer._path || typeof layer._path.getTotalLength !== 'function') return;
+  var el = layer._path;
+  var len;
+  try { len = el.getTotalLength(); } catch (e) { return; }
+  if (!len || !isFinite(len)) return;
+  el.style.setProperty('--len', len);
+  el.style.setProperty('animation-duration', (durMs || 1350) + 'ms');
+  el.classList.remove('draw-on');
+  void el.offsetWidth;         // 强制重排以重启动画
+  el.classList.add('draw-on');
+  setTimeout(function () { el.classList.remove('draw-on'); }, (durMs || 1350) + 140);
+}
+/* 对一整组多边形逐个启动描线（错开少许，视觉上像“扫描”出边界） */
+function drawOnGroup(group, durMs) {
+  if (!group) return;
+  var i = 0;
+  group.eachLayer(function (lyr) {
+    var delay = Math.min(i * 12, 420); i++;
+    setTimeout(function () { drawOn(lyr, durMs); }, delay);
+  });
+}
+
+/* --- C.5 图层构建 -------------------------------------------------------- */
+var Layers = {
+  /* GeoJSON MultiPolygon coords → 每个 polygon 一个 L.Polygon（各自 _path，便于描线） */
+  coordsToGroup: function (coords, style) {
+    var features = [];
+    for (var i = 0; i < coords.length; i++) {
+      features.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: coords[i] } });
+    }
+    return L.geoJSON({ type: 'FeatureCollection', features: features }, {
+      style: style, interactive: false
+    });
+  },
+  clearCity: function () {
+    if (state.layers.city) { state.map.removeLayer(state.layers.city); state.layers.city = null; }
+  },
+  clearProv: function () {
+    if (state.layers.prov) { state.map.removeLayer(state.layers.prov); state.layers.prov = null; }
+    if (state.layers.highlight) { state.layers.highlight = null; }
+  },
+  /* Lv.4：绘制市域描边 */
+  showCity: function (coords, onDone) {
+    this.clearCity();
+    var g = this.coordsToGroup(coords, {
+      color: '#F0A63A', weight: 2, opacity: .95, fill: true, fillColor: '#F0A63A', fillOpacity: .035
+    });
+    state.layers.city = g.addTo(state.map);
+    drawOnGroup(g, 1500);
+    setTimeout(function () { if (onDone) onDone(); }, 520);
+  },
+  /* Lv.5：绘制全部省界（无文字标注）并高亮目标省 */
+  showProvinces: function (gj, targetCode, onDone) {
+    this.clearProv();
+    var g = L.geoJSON(gj, {
+      interactive: false,
+      style: function (f) {
+        return { color: '#F0A63A', weight: 1, opacity: .34, fill: true, fillColor: '#F0A63A', fillOpacity: .03 };
+      }
+    }).addTo(state.map);
+    state.layers.prov = g;
+
+    // 目标省：加粗 + 呼吸描边（口径 B 指定要“绘制全国省界并高亮目标省”）
+    var hi = L.geoJSON(gj, {
+      interactive: false,
+      filter: function (f) {
+        return f && f.properties && String(f.properties.adcode) === String(targetCode);
+      },
+      style: function () {
+        return { color: '#FFC46B', weight: 2.4, opacity: 1, fill: true, fillColor: '#F0A63A', fillOpacity: .09 };
+      }
+    }).addTo(state.map);
+    state.layers.highlight = hi;
+    hi.eachLayer(function (l) { if (l._path) l._path.classList.add('hl-breathe'); });
+
+    drawOnGroup(g, 1600);
+    setTimeout(function () { if (onDone) onDone(); }, 560);
+  }
+};
+
+/* --- C.6 POI（高德周边搜索，JSONP 规避跨域） ----------------------------- */
+var POI_INFOCODE = {
+  '10001': '高德 Key 无效（10001 INVALID_USER_KEY），请在设置中重新配置「Web服务」类型 Key',
+  '10002': '高德服务不可用（10002），请稍后重试',
+  '10003': '高德 Key 今日调用量已达上限（10003）',
+  '10004': '高德 Key 访问过于频繁（10004），请稍后重试',
+  '10009': '高德 Key 与绑定平台不符（10009），需创建「Web服务」类型 Key',
+  '10012': '高德 Key 已过期或被删除（10012）',
+  '10013': '高德 Key 未通过审核（10013）',
+  '10019': '高德 Key 配额不足（10019）',
+  '10020': '高德 Key 被禁用（10020）',
+  '10021': '高德 Key 今日配额已用完（10021）'
+};
+function amapAround(lng, lat, key) {
+  return new Promise(function (resolve, reject) {
+    var cb = 'geoxun_cb_' + Math.floor(Math.random() * 1e9);
+    var s = document.createElement('script');
+    var settled = false;
+    var timer = setTimeout(function () { finish(new Error('timeout')); }, 12000);
+    function finish(err, data) {
+      if (settled) return; settled = true;
+      clearTimeout(timer);
+      try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+      if (s.parentNode) s.parentNode.removeChild(s);
+      if (err) reject(err); else resolve(data);
+    }
+    window[cb] = function (data) { finish(null, data); };
+    s.onerror = function () { finish(new Error('network')); };
+    s.src = 'https://restapi.amap.com/v3/place/around?key=' + encodeURIComponent(key) +
+            '&location=' + lng.toFixed(6) + ',' + lat.toFixed(6) +
+            '&radius=' + CONFIG.POI_RADIUS +
+            '&types=' + encodeURIComponent('050000|060000|070000|080000') +
+            '&offset=10&page=1&extensions=base&callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+var POICtl = {
+  clear: function () {
+    if (state.layers.poi) { state.map.removeLayer(state.layers.poi); state.layers.poi = null; }
+  },
+  /* 排除行政区划：typecode 以 1901 开头，或名称以行政区后缀结尾 */
+  isAdmin: function (name, typecode) {
+    if (typecode && String(typecode).indexOf('1901') === 0) return true;
+    return /^.{2,10}(省|市|区|县|镇|乡|街道|自治区|自治州|自治县|盟|旗)$/.test(name || '');
+  },
+  render: function (centerLngLat, done) {
+    var key = Store.readKey();
+    if (!key) { if (done) done('nokey'); return; }
+    amapAround(centerLngLat[0], centerLngLat[1], key).then(function (data) {
+      if (!data || data.status !== '1') {
+        var code = data && data.infocode;
+        UI.toast(POI_INFOCODE[code] || ('高德返回错误：' + (data && data.info) + '（' + code + '）'), 'err', 6500);
+        if (done) done('error');
+        return;
+      }
+      var pois = (data.pois || []).filter(function (p) {
+        return p && p.name && p.location && !POICtl.isAdmin(p.name, p.typecode);
+      });
+      if (!pois.length) {
+        UI.toast('该点周边未检索到有效 POI', 'warn');
+        if (done) done('empty');
+        return;
+      }
+      var grp = L.layerGroup();
+      for (var i = 0; i < pois.length; i++) {
+        var loc = String(pois[i].location).split(',');
+        var lng = parseFloat(loc[0]), lat = parseFloat(loc[1]);
+        if (!isFinite(lng) || !isFinite(lat)) continue;
+        // GCJ-02 与底图同系，直接渲染，不做纠偏
+        L.circleMarker([lat, lng], {
+          radius: 4, color: '#F0A63A', weight: 1.4,
+          fillColor: '#F0A63A', fillOpacity: .5, interactive: false
+        }).bindTooltip(pois[i].name, {
+          className: 'poi-tip', permanent: true, direction: 'top', offset: [0, -4], opacity: 1
+        }).addTo(grp);
+      }
+      POICtl.clear();
+      state.layers.poi = grp.addTo(state.map);
+      UI.toast('已获取 ' + pois.length + ' 个周边兴趣点', 'ok', 2600);
+      if (done) done('ok');
+    }).catch(function () {
+      UI.toast('周边检索请求失败，请检查网络后重试', 'err');
+      if (done) done('error');
+    });
+  }
+};
+
+/* --- C.7 地图初始化 ------------------------------------------------------ */
+var MapCtl = {
+  init: function () {
+    var map = L.map('map', {
+      center: [34.5, 105], zoom: 4,
+      zoomControl: false,
+      attributionControl: false,
+      /* 关闭 Leaflet 的 CSS 缩放动画：让 move/zoom 事件与视图严格同步，
+         蒙版每帧都能精确贴合（否则缩放的 ~250ms 内蒙版会错位）。 */
+      zoomAnimation: false,
+      fadeAnimation: true,
+      markerZoomAnimation: false,
+      worldCopyJump: false,
+      maxBoundsViscosity: 1.0,
+      renderer: L.svg(),
+      minZoom: 3, maxZoom: 18
+    });
+    state.map = map;
+
+    // 卫星影像底图：无任何文字标注
+    state.layers.sat = L.tileLayer(TILES.sat, {
+      subdomains: TILES.subdomains, tileSize: 256, minZoom: 3, maxZoom: 18, keepBuffer: 2
+    }).addTo(map);
+    state.layers.sat.on('tileerror', function () {
+      UI.toast('卫星影像加载失败，请检查网络后重试', 'err');   // 内建节流，避免刷屏
+    });
+
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+    map.on('move zoom viewreset resize zoomend moveend', scheduleMask);
+    window.addEventListener('resize', scheduleMask);
+    return map;
+  },
+
+  /* Lv.2：路网叠层（透明底、无文字） */
+  addRoad: function () {
+    if (state.layers.road) return state.layers.road;
+    state.layers.road = L.tileLayer(TILES.road, {
+      subdomains: TILES.subdomains, tileSize: 256, minZoom: 3, maxZoom: 18,
+      opacity: 0.85, keepBuffer: 2, zIndex: 3
+    });
+    state.layers.road.on('tileerror', function () { UI.toast('路网图层加载失败，请检查网络后重试', 'err'); });
+    return state.layers.road;
+  },
+  setRoadOpacity: function (v) {
+    if (state.layers.road) state.layers.road.setOpacity(v);
+  },
+  /* 由 R 反算初始缩放：让圆的屏幕半径 ≈ 视口短边的 38%。
+     注意不能与 12 取 max —— R 对绝大多数地级市会顶到 RADIUS_MAX=25km，
+     z=12 时约 31 m/px，圆半径达 760~800px，比常见屏幕的半高还大，
+     会把圆撑爆视口、使蒙版形同虚设。此处只保留上界 ZOOM_MAX；
+     并对取整结果做一次保护性降档，确保圆直径不超过视口短边。 */
+  zoomForRadius: function (R, lat) {
+    var shortSide = Math.min(window.innerWidth, window.innerHeight);
+    var cosLat = Math.cos(lat * Math.PI / 180);
+    function mppAt(zz) { return 156543.03392 * cosLat / Math.pow(2, zz); }
+    var targetMpp = R / Math.max(60, shortSide * 0.38);   // 目标米/像素（半径 ≈ 短边 38%）
+    var z = Math.round(Math.log2(156543.03392 * cosLat / targetMpp));
+    z = Math.min(CONFIG.ZOOM_MAX, z);
+    // 取整可能把圆顶出视口，逐档退到 2r ≤ 短边 为止
+    while (z > 3 && (R / mppAt(z)) * 2 > shortSide) z--;
+    return z;
+  },
+  /* 落位到本回合的落点 */
+  focusRound: function () {
+    var a = state.answer;
+    var c = L.latLng(a.point[1], a.point[0]);
+    state.centerLatLng = c;
+    state.baseRadius = a.radius;
+    state.maskRadius = a.radius;
+    // 先算出「让圆完整落在视口内」的缩放，再据此决定 minZoom 与初始视图
+    state.fitZoom = this.zoomForRadius(a.radius, c.lat);
+    Lock.circle();
+    state.map.setView(c, state.fitZoom, { animate: false });
+    state.map.invalidateSize();
+    Mask.show();
+    updateMask();
+  },
+  /* 揭晓：飞至市域全景 */
+  flyToCity: function () {
+    var b = state.answer.bbox;
+    var bounds = bboxToLatLngBounds(b);
+    var pad = Math.max(40, Math.min(90, Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.12)));
+    state.map.flyToBounds(bounds, { padding: [pad, pad], duration: 1.7, easeLinearity: .22 });
+  }
+};
+
+/* ============================================================================
+ * [D] 提示（情报）模块：五级解锁、扣分、图层开关
+ * ==========================================================================*/
+
+/* 每级提示对应的“可见效果”开关；Lv.4/Lv.5 的蒙版扩张与视野放宽是单向的 */
+function mkEl(tag, cls, txt) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+var Hint = {
+  rows: {},
+
+  /* --- D.1 渲染右侧面板 ------------------------------------------------- */
+  build: function () {
+    var host = $('intel-scroll');
+    host.innerHTML = '';
+    this.rows = {};
+
+    for (var i = 0; i < CONFIG.HINTS.length; i++) {
+      var h = CONFIG.HINTS[i];
+      var row = mkEl('div', 'hint');
+      row.setAttribute('data-level', String(h.level));
+
+      var top = mkEl('div', 'hint-top');
+      top.appendChild(mkEl('span', 'hint-lv mono', 'Lv.' + h.level));
+      top.appendChild(mkEl('span', 'hint-name', h.name));
+      var cost = mkEl('span', 'hint-cost mono', h.level === 1 ? '不计分' : '-' + h.cost);
+      top.appendChild(cost);
+
+      var sw = mkEl('label', 'switch');
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('data-lv', String(h.level));
+      input.setAttribute('aria-label', 'Lv.' + h.level + ' ' + h.name);
+      sw.appendChild(input);
+      sw.appendChild(mkEl('i'));
+      top.appendChild(sw);
+      row.appendChild(top);
+
+      var body = mkEl('div', 'hint-body');
+      row.appendChild(body);
+      host.appendChild(row);
+
+      var rec = { root: row, input: input, cost: cost, body: body, switchEl: sw, name: h.name };
+      this.rows[h.level] = rec;
+
+      // 事件绑定（用闭包固定 level）
+      (function (level, rec) {
+        rec.input.addEventListener('change', function () {
+          Hint.onToggle(level, rec.input.checked);
+        });
+        // Lv.3 未配置 Key 时：点击/悬停给出提示（开关已置灰）
+        rec.root.addEventListener('click', function (ev) {
+          if (level === 3 && !Store.readKey()) {
+            ev.preventDefault();
+            UI.toast('需配置高德 Web服务 Key', 'warn');
+            Settings.open();
+          }
+        });
+        rec.root.addEventListener('mouseenter', function () {
+          if (level === 3 && !Store.readKey()) rec.body.classList.add('expand');
+        });
+        rec.root.addEventListener('mouseleave', function () {
+          if (level === 3 && !Store.readKey()) rec.body.classList.remove('expand');
+        });
+      })(h.level, rec);
+
+      this.buildBody(h.level, rec);
+    }
+    this.refreshKey();
+    this.refreshAvailability();
+  },
+
+  /* --- D.2 各级提示的展开内容 ------------------------------------------- */
+  buildBody: function (level, rec) {
+    var b = rec.body;
+    b.innerHTML = '';
+    if (level === 1) {
+      b.appendChild(mkEl('div', 'hint-note', '卫星影像为唯一底图，初始已开启，不计扣分。'));
+    } else if (level === 2) {
+      b.appendChild(mkEl('div', 'hint-note', '叠加高德路网透明层（无文字标注），可调透明度。'));
+      var row = mkEl('div', 'slider-row');
+      var rng = document.createElement('input');
+      rng.type = 'range'; rng.min = '0'; rng.max = '100'; rng.value = '85';
+      rng.setAttribute('aria-label', '路网透明度');
+      var val = mkEl('span', 'slider-val mono', '85%');
+      rng.addEventListener('input', function () {
+        var v = parseInt(rng.value, 10);
+        val.textContent = v + '%';
+        MapCtl.setRoadOpacity(v / 100);
+      });
+      row.appendChild(rng); row.appendChild(val);
+      b.appendChild(row);
+      rec.range = rng; rec.rangeVal = val;
+    } else if (level === 3) {
+      rec.note = mkEl('div', 'hint-note', '');
+      b.appendChild(rec.note);
+    } else if (level === 4) {
+      b.appendChild(mkEl('div', 'hint-note', '蒙版扩张至覆盖全市，并描出市域边界；缩放下限放宽至 9。'));
+    } else if (level === 5) {
+      rec.note = mkEl('div', 'hint-note', '绘制全国省级边界并高亮目标省；蒙版失效，缩放下限放宽至 6。');
+      b.appendChild(rec.note);
+    }
+  },
+
+  /* --- D.3 开关状态刷新 -------------------------------------------------- */
+  refreshKey: function () {
+    var rec = this.rows[3];
+    if (!rec || !rec.note) return;
+    var has = !!Store.readKey();
+    rec.note.textContent = has
+      ? '已配置 Key，开启后在落点周边 1km 检索餐饮 / 购物 / 生活服务 / 医疗兴趣点。'
+      : '需配置高德 Web服务 Key 后方可使用（点击本行打开设置）。';
+    rec.note.className = 'hint-note' + (has ? '' : ' warn');
+  },
+
+  refreshAvailability: function () {
+    var hasKey = !!Store.readKey();
+    for (var lv = 1; lv <= 5; lv++) {
+      var rec = this.rows[lv]; if (!rec) continue;
+      /* 逐级解锁：需先解锁所有更低等级。
+         但 Lv.3 依赖外部高德 Key，若未配置则不阻断 Lv.4 / Lv.5，
+         否则没有 Key 的玩家将永远无法解锁市域与省域情报。 */
+      var unlockedBelow = true;
+      for (var k = 1; k < lv; k++) {
+        if (k === 3 && !hasKey) continue;
+        if (!state.unlocked[k]) { unlockedBelow = false; break; }
+      }
+      if (lv === 1) unlockedBelow = true;
+      var blocked = !unlockedBelow || (lv === 3 && !hasKey) || (lv === 5 && state.lv5Loading);
+      rec.input.disabled = blocked;
+      rec.switchEl.classList.toggle('disabled', blocked);
+      rec.root.classList.toggle('locked', !unlockedBelow);
+      // 已解锁的等级保留“已付”样式
+      rec.cost.classList.toggle('paid', lv > 1 && !!state.unlocked[lv]);
+    }
+  },
+
+  /* --- D.4 交互 ---------------------------------------------------------- */
+  onToggle: function (level, on) {
+    var h = CONFIG.HINTS[level - 1];
+    // 首次解锁 → 永久扣分（关掉不退款，再次打开不重复扣）
+    if (on && !state.unlocked[level]) {
+      state.unlocked[level] = true;
+      state.deduction += h.cost;
+      updateHUD();
+    }
+    applyHint(level, on);
+    this.refreshAvailability();
+  },
+
+  /* --- D.5 回合重置 ------------------------------------------------------ */
+  resetForRound: function () {
+    state.unlocked = {}; state.unlocked[1] = true;   // 口径 C：Lv.1 初始已解锁
+    state.deduction = 0;
+    state.lv4Done = false; state.lv4Shown = false;
+    state.lv5Done = false; state.lv5Loading = false;
+
+    Layers.clearCity();
+    Layers.clearProv();
+    POICtl.clear();
+    if (state.layers.road && state.map.hasLayer(state.layers.road)) state.map.removeLayer(state.layers.road);
+    if (state.layers.sat && !state.map.hasLayer(state.layers.sat)) state.map.addLayer(state.layers.sat);
+
+    for (var lv = 1; lv <= 5; lv++) {
+      var rec = this.rows[lv]; if (!rec) continue;
+      rec.input.checked = (lv === 1);
+      rec.cost.classList.remove('paid');
+      rec.root.classList.remove('on');
+      if (rec.range) { rec.range.value = '85'; if (rec.rangeVal) rec.rangeVal.textContent = '85%'; }
+    }
+    var r2 = this.rows[2]; if (r2) r2.root.classList.remove('on');
+    if (state.layers.road) state.layers.road.setOpacity(0.85);
+
+    this.refreshKey();
+    this.refreshAvailability();
+    updateHUD();
+  }
+};
+
+/* --- D.6 各级提示的实际效果 ---------------------------------------------- */
+function applyHint(level, on) {
+  var map = state.map;
+  var rec = Hint.rows[level];
+  if (rec) rec.root.classList.toggle('on', !!on);
+
+  if (level === 1) {
+    if (on) { if (!map.hasLayer(state.layers.sat)) map.addLayer(state.layers.sat); }
+    else { if (map.hasLayer(state.layers.sat)) map.removeLayer(state.layers.sat); }
+
+  } else if (level === 2) {
+    var road = MapCtl.addRoad();
+    if (on) { if (!map.hasLayer(road)) map.addLayer(road); }
+    else { if (map.hasLayer(road)) map.removeLayer(road); }
+
+  } else if (level === 3) {
+    if (on) {
+      if (!Store.readKey()) { UI.toast('需配置高德 Web服务 Key', 'warn'); Settings.open(); return; }
+      UI.status('检索周边…');
+      // 在落点附近取一个陆地上的随机点作为检索中心
+      var pt = pickLandingPoint(state.answer.coords) || state.answer.point;
+      POICtl.render(pt, function (r) { UI.status(r === 'ok' ? '周边情报已加载' : '待命'); });
+    } else {
+      POICtl.clear();
+      UI.status('待命');
+    }
+
+  } else if (level === 4) {
+    if (on) enableLv4(); else disableLv4();
+
+  } else if (level === 5) {
+    if (on) enableLv5(); else disableLv5();
+  }
+}
+
+/* Lv.4：蒙版动画扩张覆盖市 bbox → 放宽视野 → 描出市界 */
+function enableLv4() {
+  if (state.lv4Done) {          // 已解锁过，仅恢复显示
+    if (state.layers.city) state.layers.city.addTo(state.map);
+    state.lv4Shown = true;
+    return;
+  }
+  state.lv4Done = true; state.lv4Shown = true;
+  var target = Mask.radiusToCover(state.answer.bbox, state.answer.point);
+  Mask.expandTo(target);                 // 直径扩张动画（口径 B）
+  Lock.city();
+  Layers.showCity(state.answer.coords);
+  UI.status('市域边界已加载');
+}
+function disableLv4() {
+  if (state.layers.city && state.map.hasLayer(state.layers.city)) state.map.removeLayer(state.layers.city);
+  state.lv4Shown = false;
+  // 蒙版与视野的放宽是单向的，不回滚
+}
+
+/* Lv.5：加载全国省界 → 蒙版扩张覆盖全国 bbox → 放宽视野 → 高亮目标省 */
+function enableLv5() {
+  if (state.lv5Done) {
+    if (state.layers.prov) state.layers.prov.addTo(state.map);
+    if (state.layers.highlight) state.layers.highlight.addTo(state.map);
+    return;
+  }
+  if (state.lv5Loading) return;
+  if (state.lv5Gj) { finishLv5(); return; }
+
+  state.lv5Loading = true;
+  Hint.refreshAvailability();
+  UI.status('加载全国省界…');
+  var rec = Hint.rows[5];
+  var token = state.roundToken;
+  if (rec && rec.note) rec.note.textContent = '正在加载全国省级边界数据…';
+
+  fetchJSON(CONFIG.DATA_BASE + CONFIG.CHINA_CODE + '_full.json', 25000).then(function (gj) {
+    if (token !== state.roundToken) return;      // 已换回合，丢弃
+    state.lv5Gj = gj;
+    state.chinaBBox = coordsBBox(mergeCoords(gj.features));
+    state.lv5Loading = false;
+    if (rec && rec.note) rec.note.textContent = '绘制全国省级边界并高亮目标省；蒙版失效，缩放下限放宽至 6。';
+    finishLv5();
+  }).catch(function () {
+    if (token !== state.roundToken) return;
+    state.lv5Loading = false;
+    if (rec) { rec.input.checked = false; rec.root.classList.remove('on'); }
+    if (rec && rec.note) rec.note.textContent = '全国省界加载失败，可再次开启重试。';
+    UI.status('省界加载失败');
+    UI.toast('全国省界加载失败，请检查网络后重试', 'err');
+    Hint.refreshAvailability();
+  });
+}
+function finishLv5() {
+  state.lv5Done = true;
+  Lock.national();
+  var bbox = state.chinaBBox || [73.4, 3.5, 135.2, 53.7];
+  Mask.expandTo(Mask.radiusToCover(bbox, state.answer.point));   // 覆盖全国 bbox → 蒙版实际失效
+  Layers.showProvinces(state.lv5Gj, state.answer.provCode);
+  UI.status('省域轮廓已加载');
+  UI.toast('全国省界已绘制，目标省已高亮', 'ok', 3000);
+}
+function disableLv5() {
+  if (state.layers.prov && state.map.hasLayer(state.layers.prov)) state.map.removeLayer(state.layers.prov);
+  if (state.layers.highlight && state.map.hasLayer(state.layers.highlight)) state.map.removeLayer(state.layers.highlight);
+}
+
+/* ============================================================================
+ * [E] 计分 / 回合流程 / 揭晓 / 动效 / 事件绑定 / 启动
+ * ==========================================================================*/
+
+/* --- E.1 计分（口径 E） -------------------------------------------------- */
+/* 剩余满分 = max(1000 - 已解锁扣分之和, 100) */
+function remainingMax() {
+  return Math.max(CONFIG.MAX_SCORE - state.deduction, CONFIG.SCORE_FLOOR);
+}
+function updateHUD() {
+  $('hud-round').textContent = state.round ? String(state.round) : '--';
+  $('hud-score').textContent = String(state.score);
+  $('hud-max').textContent = String(remainingMax());
+}
+function renderStats() {
+  var s = state.stats;
+  $('st-score').textContent = String(s.totalScore);
+  $('st-rounds').textContent = String(s.rounds);
+  $('st-avg').textContent = s.rounds ? String(Math.round(s.totalScore / s.rounds)) : '0';
+  $('st-city').textContent = s.rounds ? Math.round(s.cityCorrect / s.rounds * 100) + '%' : '--';
+  $('st-prov').textContent = s.rounds ? Math.round(s.provCorrect / s.rounds * 100) + '%' : '--';
+}
+
+/* --- E.2 设置弹窗（高德 Key） ------------------------------------------- */
+var Settings = {
+  open: function () {
+    $('key-input').value = Store.readKey();
+    $('modal').classList.add('on');
+    setTimeout(function () { try { $('key-input').focus(); } catch (e) {} }, 40);
+  },
+  close: function () { $('modal').classList.remove('on'); },
+  save: function () {
+    var v = $('key-input').value.trim();
+    Store.writeKey(v);
+    Settings.close();
+    Hint.refreshKey();
+    Hint.refreshAvailability();
+    UI.toast(v ? '已保存高德 Web服务 Key' : '已清除高德 Key', 'ok', 2600);
+  }
+};
+
+/* --- E.3 作答区 ---------------------------------------------------------- */
+function placeholderOpt(t) {
+  var o = document.createElement('option');
+  o.value = ''; o.textContent = t;
+  return o;
+}
+function fillProvinceSelect() {
+  var sel = $('sel-prov');
+  sel.innerHTML = '';
+  sel.appendChild(placeholderOpt('选择省份'));
+  for (var i = 0; i < PROVINCES.length; i++) {
+    var o = document.createElement('option');
+    o.value = PROVINCES[i].code;
+    o.textContent = PROVINCES[i].name;   // 34 省全量，不含答案信息
+    sel.appendChild(o);
+  }
+}
+function updateSubmit() {
+  var pc = $('sel-prov').value;
+  var hasCityList = !$('sel-city').disabled;
+  var cn = $('sel-city').value;
+  var ok = !!pc && (!hasCityList || !!cn);
+  $('btn-submit').disabled = !ok || state.answered || state.busy;
+}
+function setAnswerEnabled(on) {
+  $('sel-prov').disabled = !on;
+  $('btn-skip').disabled = !on;
+  if (!on) { $('sel-city').disabled = true; $('btn-submit').disabled = true; }
+  else updateSubmit();
+}
+function resetAnswerUI() {
+  $('sel-prov').value = '';
+  var cs = $('sel-city');
+  cs.innerHTML = ''; cs.appendChild(placeholderOpt('选择城市')); cs.disabled = true;
+  state.cityListAvailable = false;
+  setAnswerEnabled(false);
+}
+/* 省份 → 联动城市下拉（选项来自已缓存的该省 JSON） */
+function onProvChange() {
+  var code = $('sel-prov').value;
+  var cs = $('sel-city');
+  cs.innerHTML = '';
+  if (!code) {
+    cs.appendChild(placeholderOpt('选择城市'));
+    cs.disabled = true; state.cityListAvailable = false; updateSubmit(); return;
+  }
+  cs.disabled = true;
+  cs.appendChild(placeholderOpt('加载中…'));
+  state.cityListAvailable = false;
+  updateSubmit();
+
+  loadProvince(code).then(function (gj) {
+    if ($('sel-prov').value !== code) return;   // 用户已切换
+    var names = cityNames(gj, code);
+    cs.innerHTML = '';
+    cs.appendChild(placeholderOpt('选择城市'));
+    for (var i = 0; i < names.length; i++) {
+      var o = document.createElement('option');
+      o.value = names[i]; o.textContent = names[i];
+      cs.appendChild(o);
+    }
+    cs.disabled = false;
+    state.cityListAvailable = true;
+    updateSubmit();
+  }).catch(function () {
+    // 该省无市列表（如台湾 404）→ 仅凭省份判定
+    if ($('sel-prov').value !== code) return;
+    cs.innerHTML = '';
+    cs.appendChild(placeholderOpt('该省暂无城市列表'));
+    cs.disabled = true;
+    state.cityListAvailable = false;
+    UI.toast('该省份的城市列表不可用，将只判定省份', 'warn');
+    updateSubmit();
+  });
+}
+
+/* --- E.4 揭晓面板 -------------------------------------------------------- */
+function replayAnim(el) {
+  if (!el) return;
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+}
+function rowEl(k, v, ok) {
+  var d = mkEl('div', 'rrow');
+  var kd = mkEl('div', 'k');
+  if (ok === true || ok === false) kd.appendChild(mkEl('span', 'dot' + (ok ? ' ok' : '')));
+  kd.appendChild(mkEl('span', '', k));
+  d.appendChild(kd);
+  var vd = mkEl('span', 'v', v);
+  d.appendChild(vd);
+  return d;
+}
+var Reveal = {
+  hide: function () {
+    $('reveal').classList.remove('show');
+    setTimeout(function () {           // 收起后再清空，避免残留上一回合的答案文本
+      $('reveal-city').textContent = '';
+      $('reveal-prov').textContent = '';
+      $('reveal-rows').innerHTML = '';
+      $('reveal-verdict').textContent = '';
+      document.title = '图寻华夏';
+    }, 640);
+  },
+  show: function (g) {
+    var a = state.answer;
+    // 以下写入均发生在“判定完成之后”，符合防泄题要求
+    $('reveal-city').textContent = a.cityName;
+    $('reveal-prov').textContent = a.provName;
+    document.title = a.cityName + ' · 图寻华夏';
+
+    var rows = $('reveal-rows');
+    rows.innerHTML = '';
+    rows.appendChild(rowEl('省份', g.guessProvName || '未作答', g.provOk));
+    rows.appendChild(rowEl('城市', g.guessCityName || '未作答', g.cityOk));
+    rows.appendChild(rowEl('剩余满分', String(g.base), null));
+    var big = mkEl('div', 'rrow big');
+    big.appendChild(mkEl('div', 'k', '本次得分'));
+    var span = mkEl('span', 'v', '0');
+    span.id = 'score-num';
+    big.appendChild(span);
+    rows.appendChild(big);
+
+    $('reveal-verdict').textContent =
+      (g.provOk && g.cityOk) ? '精准命中' :
+      (g.provOk ? '省份正确，城市未中' : '未命中目标');
+
+    replayAnim($('reveal-city'));
+    replayAnim($('reveal-prov'));
+    replayAnim($('reveal-verdict'));
+    void $('reveal').offsetWidth;
+    $('reveal').classList.add('show');
+    rollNumber($('score-num'), 0, g.awarded, 950);
+  }
+};
+
+/* --- E.5 回合流程 -------------------------------------------------------- */
+var failCount = 0;
+
+function maskLoading() {          // 出题期间整屏遮黑，避免任何提前泄露
+  state.centerLatLng = null;
+  state.maskActive = true;
+  var m = $('mask');
+  m.classList.remove('off');
+  m.style.setProperty('--cx', '50%');
+  m.style.setProperty('--cy', '50%');
+  m.style.setProperty('--r', '0px');
+  $('ring').classList.add('off');
+}
+function showRetryCard(extra) {
+  var host = $('intel-scroll');
+  var old = $('retry-card');
+  if (old && old.parentNode) old.parentNode.removeChild(old);
+  var card = mkEl('div', 'hint-empty');
+  card.id = 'retry-card';
+  card.appendChild(mkEl('div', '', '数据加载失败，请检查网络后重试。'));
+  if (extra) card.appendChild(mkEl('div', '', extra));
+  var btn = mkEl('button', 'btn primary', '重试');
+  btn.style.marginTop = '9px';
+  btn.addEventListener('click', function () { nextRound(); });
+  card.appendChild(btn);
+  host.insertBefore(card, host.firstChild);
+  host.scrollTop = 0;
+}
+function clearRetryCard() {
+  var c = $('retry-card');
+  if (c && c.parentNode) c.parentNode.removeChild(c);
+}
+
+function nextRound() {
+  if (state.busy) return;
+  state.busy = true;
+  state.answered = false;
+  state.answer = null;
+  state.roundToken = (state.roundToken || 0) + 1;   // 用于作废上一回合遗留的异步回调
+
+  clearRetryCard();
+  Reveal.hide();          // 收起上一回合的揭晓面板（并在动画后清空其中的答案文本）
+  Lock.none();
+  resetAnswerUI();
+  Hint.resetForRound();
+  maskLoading();
+  UI.scanPct(16);
+  UI.status('定位中…');
+  document.title = '图寻华夏';
+
+  rollQuestion().then(function (ans) {
+    state.answer = ans;
+    state.round += 1;
+    state.score = state.stats.totalScore;
+    updateHUD();
+
+    MapCtl.focusRound();
+    setAnswerEnabled(true);
+    UI.scanPct(100);
+    setTimeout(function () { UI.scan(false); }, 360);
+    UI.status('待命');
+    state.busy = false;
+    failCount = 0;
+  }).catch(function (err) {
+    state.busy = false;
+    UI.scan(false);
+    failCount += 1;
+    UI.status('数据加载失败');
+    var extra = '';
+    // 连续多次失败且以 file:// 打开时，才作为补充建议出现
+    if (failCount >= 2 && location.protocol === 'file:') {
+      extra = '如仍失败，可改用本地 HTTP 服务器打开（在文件所在目录执行 python -m http.server）。';
+    }
+    showRetryCard(extra);
+    UI.toast('数据加载失败，请检查网络后重试', 'err', 7000);
+  });
+}
+
+function submitAnswer() {
+  if (state.busy || state.answered || !state.answer) return;
+  var a = state.answer;
+  var pc = $('sel-prov').value;
+  var hasCityList = state.cityListAvailable;
+  var cn = hasCityList ? $('sel-city').value : '';
+
+  var provOk = (pc === a.provCode);
+  // 城市列表不可用时（如台湾），只要省份正确即视为城市正确
+  var cityOk = provOk && (!hasCityList || cn === a.cityName);
+
+  var base = remainingMax();
+  var awarded = (provOk && cityOk) ? base
+              : (provOk ? Math.round(base * CONFIG.CITY_WRONG_RATIO) : 0);
+
+  finishRound({
+    provOk: provOk, cityOk: cityOk, base: base, awarded: awarded,
+    guessProvName: provName(pc) || '',
+    guessCityName: hasCityList ? cn : (provOk ? a.cityName : '')
+  });
+}
+
+function skipAnswer() {
+  if (state.busy || state.answered || !state.answer) return;
+  var base = remainingMax();
+  finishRound({ provOk: false, cityOk: false, base: base, awarded: 0, guessProvName: '', guessCityName: '' });
+}
+
+function finishRound(g) {
+  state.answered = true;
+  setAnswerEnabled(false);
+
+  // 揭晓：解除蒙版与视野限制（进入自由观察）
+  Mask.hide();
+  Lock.none();
+
+  // 累计战绩并落盘
+  var s = state.stats;
+  s.rounds += 1;
+  s.totalScore += g.awarded;
+  if (g.cityOk) s.cityCorrect += 1;
+  if (g.provOk) s.provCorrect += 1;
+  Store.writeStats(s);
+  state.score = s.totalScore;
+  updateHUD();
+  renderStats();
+
+  // 金色市界描边 + 描线动画（无论是否买过 Lv.4 都在揭晓时呈现）
+  Layers.showCity(state.answer.coords);
+  setTimeout(function () {
+    if (state.layers.city) {
+      state.layers.city.setStyle({ color: '#FFD28A', weight: 2.6, opacity: 1, fill: false });
+    }
+  }, 80);
+
+  MapCtl.flyToCity();                              // flyToBounds 飞至市域全景
+  setTimeout(function () { Reveal.show(g); }, 560); // 城市名自下浮现
+  UI.status('已揭晓');
+}
+
+/* --- E.6 开场雷达 -------------------------------------------------------- */
+function playRadar(done) {
+  var r = $('radar');
+  r.classList.add('on');
+  r.classList.remove('out');
+  var readout = $('radar-readout');
+  var timer = setInterval(function () {
+    var lat = (Math.random() * 42 + 4).toFixed(4);
+    var lon = (Math.random() * 52 + 78).toFixed(4);
+    var alt = Math.floor(Math.random() * 900 + 100);
+    readout.textContent = 'LAT ' + lat + '  LON ' + lon + '  ALT ' + alt;
+  }, 75);
+  setTimeout(function () {
+    clearInterval(timer);
+    r.classList.add('out');
+    setTimeout(function () {
+      r.classList.remove('on', 'out');
+      if (done) done();
+    }, 520);
+  }, 1500);
+}
+
+/* --- E.7 事件绑定与启动 -------------------------------------------------- */
+function bindEvents() {
+  $('btn-start').addEventListener('click', function () {
+    $('title').classList.add('hide');
+    playRadar(function () { nextRound(); });
+  });
+  $('btn-reset').addEventListener('click', function () {
+    if (!window.confirm('确定要清空全部战绩吗？此操作不可撤销。')) return;
+    state.stats = { totalScore: 0, rounds: 0, cityCorrect: 0, provCorrect: 0 };
+    Store.writeStats(state.stats);
+    state.score = 0;
+    renderStats();
+    updateHUD();
+    UI.toast('战绩已重置', 'ok', 2400);
+  });
+  $('btn-settings').addEventListener('click', function () { Settings.open(); });
+  $('btn-key-save').addEventListener('click', function () { Settings.save(); });
+  $('btn-key-cancel').addEventListener('click', function () { Settings.close(); });
+  $('modal').addEventListener('click', function (ev) { if (ev.target === $('modal')) Settings.close(); });
+  $('key-input').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') Settings.save(); });
+
+  $('sel-prov').addEventListener('change', onProvChange);
+  $('sel-city').addEventListener('change', updateSubmit);
+  $('btn-submit').addEventListener('click', submitAnswer);
+  $('btn-skip').addEventListener('click', skipAnswer);
+  $('btn-next').addEventListener('click', function () { nextRound(); });
+
+  $('drawer-toggle').addEventListener('click', function () { $('intel').classList.toggle('open'); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') Settings.close();
+  });
+  // 移动端：选中下拉时不触发抽屉收起
+  $('intel').addEventListener('touchstart', function (ev) { ev.stopPropagation(); }, { passive: true });
+
+  // 移动端默认收起抽屉（桌面端由 CSS 保持可见）
+  if (window.innerWidth <= 900) $('intel').classList.remove('open');
+}
+
+/* 依赖加载（CDN 兜底，第二层）
+   外链 <script> 整条失败时脚本体不会执行，window.L 保持 undefined，
+   不存在「Leaflet 半初始化」的中间态。但若浏览器拦截 document.write 注入的
+   脚本（如 Chrome 在慢网络下的干预），文档流里的兜底就会落空。
+   因此这里再补一层异步兜底：缺哪个就从备用源按序补齐，补齐后统一启动。 */
+function loadScript(url) {
+  return new Promise(function (resolve) {
+    var s = document.createElement('script');
+    s.src = url;
+    s.onload = function () { resolve(true); };
+    s.onerror = function () { resolve(false); };
+    document.head.appendChild(s);
+  });
+}
+function ensureDeps(cb) {
+  var needL = (typeof L === 'undefined');
+  var needT = (typeof turf === 'undefined');
+  if (!needL && !needT) { cb(true); return; }
+  var jobs = [];
+  if (needL) {
+    jobs.push(loadScript('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js')
+      .then(function (ok) { return ok || loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'); }));
+  }
+  if (needT) {
+    jobs.push(loadScript('https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js')
+      .then(function (ok) { return ok || loadScript('https://unpkg.com/@turf/turf@6/turf.min.js'); }));
+  }
+  Promise.all(jobs).then(function () {
+    cb(typeof L !== 'undefined' && typeof turf !== 'undefined');
+  });
+}
+function showDepError() {
+  var card = document.querySelector('.title-card');
+  if (!card) return;
+  card.innerHTML = '';
+  var h = mkEl('h1', 'title-h', '依赖加载失败');
+  h.style.fontSize = '28px';
+  card.appendChild(h);
+  card.appendChild(mkEl('div', 'title-foot',
+    'Leaflet / Turf.js 的 CDN 资源均未能加载，请检查网络后刷新重试。'));
+}
+
+function boot() {
+  ensureDeps(function (ok) {
+    if (!ok) { showDepError(); return; }
+
+    state.stats = Store.readStats();
+    state.score = state.stats.totalScore;
+    renderStats();
+
+    MapCtl.init();
+    Hint.build();
+    fillProvinceSelect();
+    resetAnswerUI();
+    bindEvents();
+
+    maskLoading();      // 开场即整屏遮黑，防止任何提前泄露
+    updateHUD();
+    UI.status('待命');
+  });
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
