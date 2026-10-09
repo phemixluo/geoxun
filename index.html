@@ -5,22 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>图寻华夏</title>
 <meta name="description" content="卫星影像地理侦察游戏">
+<!-- 字体异步加载：Google Fonts 在国内常不可达，阻塞渲染会让“双击打开”长时间白屏 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link id="lf-css" rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
+<!-- Leaflet CSS：国内镜像优先（unpkg 在国内经常极慢），失败按序兜底 -->
+<link id="lf-css" rel="stylesheet" href="https://registry.npmmirror.com/leaflet/1.9.4/files/dist/leaflet.css">
 <script>
-/* Leaflet CSS 兜底：主源（unpkg）不可用时自动切换到 jsdelivr，避免地图样式缺失 */
+/* Leaflet CSS 兜底：主源不可用时按序切换镜像，避免地图样式缺失 */
 (function () {
-  var link = document.getElementById('lf-css');
+  var FALLBACKS = [
+    'https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.min.css',
+    'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css',
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+  ];
+  var idx = 0, tried = {};
   function fallback() {
-    if (document.getElementById('lf-css-2')) return;
+    if (idx >= FALLBACKS.length) return;
+    var url = FALLBACKS[idx++];
+    if (tried[url]) return fallback();
+    tried[url] = 1;
     var n = document.createElement('link');
-    n.id = 'lf-css-2'; n.rel = 'stylesheet';
-    n.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+    n.rel = 'stylesheet';
+    n.href = url;
+    n.addEventListener('error', fallback);
     document.head.appendChild(n);
   }
-  link.addEventListener('error', fallback);
+  document.getElementById('lf-css').addEventListener('error', fallback);
   setTimeout(function () {
     var ok = false;
     try {
@@ -58,6 +70,36 @@
   --cx:50%;
   --cy:50%;
   --r:0px;
+  /* 夜间主题（默认）专用变量 */
+  --mask:#070C11;                       /* 蒙版色（不透明） */
+  --glass:rgba(10,15,20,.84);           /* 毛玻璃面板 */
+  --backdrop:rgba(3,6,9,.72);           /* 全屏反镱遮罩 */
+  --chip-bg:rgba(255,255,255,.05);      /* HUD 小胶囊 */
+  --chip-bd:rgba(255,255,255,.08);
+  --hair:rgba(255,255,255,.07);         /* 发丝分隔线 */
+  --hud-g1:rgba(7,12,17,.95);           /* HUD 顶部渐变 */
+  --hud-g2:rgba(7,12,17,.62);
+  --bg-title:radial-gradient(circle at 50% 38%,#101B24 0%,#070C11 62%,#05080B 100%);
+}
+/* 白天主题：蒙版换为浅雾色，面板/文字整体反转，琥珀强调色保持不变 */
+html[data-theme="day"]{
+  --bg:#E9EDF1;
+  --bg-deep:#DDE3EA;
+  --fg:#1B2634;
+  --fg-2:#4A5A6C;
+  --fg-3:#8494A4;
+  --line:rgba(30,70,110,.16);
+  --panel:rgba(250,252,254,.92);
+  --panel-solid:#F2F6FA;
+  --mask:#E3E8EE;
+  --glass:rgba(248,250,252,.88);
+  --backdrop:rgba(233,238,243,.78);
+  --chip-bg:rgba(20,40,70,.06);
+  --chip-bd:rgba(20,40,70,.12);
+  --hair:rgba(20,40,70,.12);
+  --hud-g1:rgba(238,242,246,.95);
+  --hud-g2:rgba(238,242,246,.6);
+  --bg-title:radial-gradient(circle at 50% 38%,#F6F9FC 0%,#E7EDF3 62%,#DDE5EC 100%);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{
@@ -82,7 +124,7 @@ svg.ico{width:16px;height:16px;flex:0 0 auto;display:block}
 .leaflet-container{background:var(--bg-deep);font-family:var(--sans)}
 .leaflet-control-zoom{border:none!important;box-shadow:0 6px 22px rgba(0,0,0,.55)!important}
 .leaflet-control-zoom a{
-  background:rgba(11,17,23,.9)!important;color:var(--amber)!important;
+  background:var(--panel)!important;color:var(--amber)!important;
   border:1px solid var(--line)!important;width:34px!important;height:34px!important;
   line-height:32px!important;font-weight:500!important;font-size:19px!important;
   backdrop-filter:blur(6px);transition:background .15s,color .15s
@@ -90,11 +132,12 @@ svg.ico{width:16px;height:16px;flex:0 0 auto;display:block}
 .leaflet-control-zoom a:hover{background:rgba(240,166,58,.16)!important;color:#FFD28A!important}
 .leaflet-bar a:first-child{border-radius:10px 10px 0 0!important}
 .leaflet-bar a:last-child{border-radius:0 0 10px 10px!important}
-/* 底图上禁止出现任何文字（卫星影像本身无标注；路网用的是无文字透明叠层） */
+/* 底图上禁止出现任何文字（卫星影像本身无标注；Lv.1 只有影像；
+   路网文字标注属于 Lv.2 解锁后才出现的路名注记层） */
 .leaflet-tooltip.poi-tip{
-  background:rgba(9,14,19,.92);border:1px solid var(--line);color:var(--fg);
+  background:var(--panel-solid);border:1px solid var(--line);color:var(--fg);
   font-size:11.5px;font-family:var(--sans);padding:3px 7px;border-radius:5px;
-  box-shadow:0 4px 14px rgba(0,0,0,.5)
+  box-shadow:0 4px 14px rgba(0,0,0,.25)
 }
 .leaflet-tooltip.poi-tip::before{display:none}
 .leaflet-tooltip.city-tip{
@@ -110,7 +153,7 @@ svg.ico{width:16px;height:16px;flex:0 0 auto;display:block}
    ========================================================================== */
 #mask{
   position:fixed;inset:0;pointer-events:none;z-index:800;
-  background:#070C11;   /* 完全不透明：圆外不允许透出任何影像信息 */
+  background:var(--mask);   /* 完全不透明：圆外不允许透出任何影像信息；白天为浅雾色 */
   -webkit-mask-image:radial-gradient(circle at var(--cx) var(--cy),
       transparent 0, transparent calc(var(--r) - 1px), #000 var(--r));
           mask-image:radial-gradient(circle at var(--cx) var(--cy),
@@ -154,7 +197,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   position:fixed;top:0;left:0;right:0;height:50px;z-index:1100;
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   padding:0 12px 0 14px;
-  background:linear-gradient(180deg,rgba(7,12,17,.95),rgba(7,12,17,.62) 70%,transparent);
+  background:linear-gradient(180deg,var(--hud-g1),var(--hud-g2) 70%,transparent);
   pointer-events:none;
   padding-top:env(safe-area-inset-top);
 }
@@ -165,7 +208,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .hud-sep{width:1px;height:16px;background:var(--line);flex:0 0 auto}
 .hud-item{
   font-size:11.5px;color:var(--fg-2);white-space:nowrap;display:flex;align-items:baseline;gap:5px;
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+  background:var(--chip-bg);border:1px solid var(--chip-bd);
   border-radius:999px;padding:3px 10px
 }
 .hud-item b{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--fg)}
@@ -173,7 +216,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .hud-right{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .icon-btn{
   width:32px;height:32px;display:grid;place-items:center;cursor:pointer;
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;
+  background:var(--chip-bg);border:1px solid var(--chip-bd);border-radius:10px;
   color:var(--fg-2);transition:all .18s cubic-bezier(.2,.7,.3,1)
 }
 .icon-btn:hover{color:var(--amber);border-color:var(--amber-soft);background:rgba(240,166,58,.12);transform:translateY(-1px)}
@@ -185,7 +228,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 #intel{
   position:fixed;top:58px;right:12px;width:290px;max-height:calc(100vh - 76px);
   z-index:1100;display:flex;flex-direction:column;
-  background:rgba(10,15,20,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border:1px solid var(--line);border-radius:16px;
   box-shadow:0 18px 46px rgba(0,0,0,.5);
   overflow:hidden;transition:transform .32s cubic-bezier(.4,0,.2,1)
@@ -198,8 +241,8 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 #intel-status{font-size:10.5px;color:var(--fg-3);font-family:var(--mono);text-align:right}
 .intel-scroll{overflow-y:auto;overflow-x:hidden;padding:8px;-webkit-overflow-scrolling:touch}
 .hint{
-  border:1px solid rgba(255,255,255,.05);border-radius:10px;
-  background:rgba(255,255,255,.017);margin-bottom:8px;overflow:hidden;
+  border:1px solid var(--hair);border-radius:10px;
+  background:var(--chip-bg);margin-bottom:8px;overflow:hidden;
   transition:border-color .18s cubic-bezier(.2,.7,.3,1),background .18s cubic-bezier(.2,.7,.3,1)
 }
 .hint.on{border-color:var(--amber-dim);background:rgba(240,166,58,.055)}
@@ -224,11 +267,11 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .hint-note{font-size:11px;line-height:1.6;color:var(--fg-2)}
 .hint-note.warn{color:#E0A05A}
 .hint-empty{
-  font-size:11.5px;color:var(--fg-3);border:1px dashed rgba(255,255,255,.1);
+  font-size:11.5px;color:var(--fg-3);border:1px dashed var(--chip-bd);
   border-radius:10px;padding:7px 9px;line-height:1.55
 }
 .slider-row{display:flex;align-items:center;gap:9px;margin-top:4px}
-.slider-row input[type=range]{flex:1 1 auto;-webkit-appearance:none;height:3px;border-radius:3px;background:rgba(255,255,255,.14);outline:none}
+.slider-row input[type=range]{flex:1 1 auto;-webkit-appearance:none;height:3px;border-radius:3px;background:var(--chip-bd);outline:none}
 .slider-row input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
   background:var(--amber);cursor:pointer;box-shadow:0 0 8px var(--amber-glow)
@@ -253,11 +296,47 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .switch input:disabled+i{opacity:.4;cursor:not-allowed}
 .switch.disabled{cursor:not-allowed}
 /* 作答区 */
-.answer{border-top:1px solid var(--line);padding:12px;flex:0 0 auto;background:rgba(7,12,17,.4)}
+.answer{border-top:1px solid var(--line);padding:12px;flex:0 0 auto;background:var(--chip-bg)}
 .answer-lbl{font-size:10.5px;letter-spacing:.18em;color:var(--fg-3);margin:0 0 6px 2px}
+.pick-btn{
+  width:100%;padding:10px 12px;margin-bottom:8px;font-size:12.5px;text-align:left;
+  background:var(--panel-solid);border:1px solid var(--chip-bd);border-radius:10px;
+  color:var(--fg);cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  transition:border-color .18s cubic-bezier(.2,.7,.3,1)
+}
+.pick-btn:hover:not(:disabled){border-color:var(--amber-soft)}
+.pick-btn:disabled{opacity:.42;cursor:not-allowed}
+.pick-btn .ph{color:var(--fg-3)}
+.pick-btn svg{flex:0 0 auto;opacity:.65}
+
+/* 地图选点弹层（浅色矢量地图，两步：省 → 市） */
+#picker{
+  position:fixed;inset:0;z-index:3000;display:none;place-items:center;padding:18px;
+  background:var(--backdrop);backdrop-filter:blur(3px)
+}
+#picker.on{display:grid}
+.picker-card{
+  position:relative;width:min(680px,100%);height:min(560px,92vh);display:flex;flex-direction:column;
+  background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.55)
+}
+.picker-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.picker-head .t{flex:1 1 auto;font-size:13px;font-weight:600;color:var(--fg);letter-spacing:.06em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-head .btn{padding:6px 11px;font-size:12px;flex:0 0 auto}
+#picker-map{flex:1 1 auto;min-height:0;background:#F2F5F0}
+.picker-foot{display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)}
+#picker-sel{flex:1 1 auto;font-size:12.5px;color:var(--fg-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#picker-sel b{color:var(--amber);font-weight:600}
+#picker-loading{
+  position:absolute;left:0;right:0;top:44px;bottom:53px;display:none;place-items:center;
+  font-size:12.5px;color:#5E6C7A;background:rgba(244,246,242,.65);z-index:600;letter-spacing:.1em
+}
+#picker-loading.on{display:grid}
 .sel{
   width:100%;padding:9px 10px;margin-bottom:8px;font-size:12.5px;
-  background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.1);border-radius:10px;
+  background:var(--panel-solid);border:1px solid var(--chip-bd);border-radius:10px;
   color:var(--fg);appearance:none;cursor:pointer;
   background-image:linear-gradient(45deg,transparent 50%,var(--fg-3) 50%),linear-gradient(135deg,var(--fg-3) 50%,transparent 50%);
   background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;
@@ -266,11 +345,11 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 }
 .sel:focus{outline:none;border-color:var(--amber-soft)}
 .sel:disabled{opacity:.42;cursor:not-allowed}
-.sel option{background:#0C1218;color:var(--fg)}
+.sel option{background:var(--panel-solid);color:var(--fg)}
 .answer-btns{display:flex;gap:8px;margin-top:2px}
 .btn{
   flex:1 1 0;padding:10px 8px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:500;
-  border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--fg);
+  border:1px solid var(--line);background:var(--chip-bg);color:var(--fg);
   transition:all .18s cubic-bezier(.2,.7,.3,1);letter-spacing:.04em;white-space:nowrap
 }
 .btn:hover:not(:disabled){border-color:var(--amber-soft);background:rgba(240,166,58,.12);transform:translateY(-1px)}
@@ -288,12 +367,12 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   border-color:transparent;color:#1A1206;font-weight:700
 }
 .btn.primary:hover:not(:disabled){background:linear-gradient(180deg,#FFC46B,#E09A33);filter:brightness(1.04)}
-.btn.primary:disabled{background:rgba(255,255,255,.07);color:var(--fg-3)}
+.btn.primary:disabled{background:var(--chip-bg);color:var(--fg-3)}
 .btn.ghost{flex:0 0 auto;padding:10px 13px}
 #drawer-toggle{
   display:none;position:fixed;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));
   z-index:1101;width:54px;height:54px;border-radius:50%;place-items:center;cursor:pointer;
-  background:rgba(10,15,20,.88);border:1px solid var(--amber-soft);color:var(--amber);
+  background:var(--glass);border:1px solid var(--amber-soft);color:var(--amber);
   box-shadow:0 8px 26px rgba(0,0,0,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   transition:transform .18s cubic-bezier(.2,.7,.3,1),background .18s
 }
@@ -379,7 +458,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 /* 标题页 */
 #title{
   position:fixed;inset:0;z-index:3200;display:grid;place-items:center;padding:20px;
-  background:radial-gradient(circle at 50% 38%,#101B24 0%,#070C11 62%,#05080B 100%);
+  background:var(--bg-title);
   transition:opacity .5s ease,visibility .5s
 }
 #title.hide{opacity:0;visibility:hidden}
@@ -395,17 +474,17 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .title-mark svg{width:26px;height:26px}
 .title-h{
   font-family:var(--serif);font-weight:900;font-size:clamp(38px,10vw,54px);
-  letter-spacing:.16em;margin:0 0 8px;color:#F4F8FB;text-indent:.16em;
+  letter-spacing:.16em;margin:0 0 8px;color:var(--fg);text-indent:.16em;
   text-shadow:0 0 42px rgba(240,166,58,.22)
 }
 .title-sub{font-size:12px;letter-spacing:.4em;color:var(--amber);margin-bottom:26px;text-indent:.4em}
 .stats{
   border:1px solid var(--line);border-radius:14px;overflow:hidden;
-  background:rgba(9,14,19,.6);margin-bottom:22px
+  background:var(--chip-bg);margin-bottom:22px
 }
-.stats-row{display:flex;border-bottom:1px solid rgba(255,255,255,.05)}
+.stats-row{display:flex;border-bottom:1px solid var(--hair)}
 .stats-row:last-child{border-bottom:none}
-.stat{flex:1 1 0;padding:13px 6px;text-align:center;border-right:1px solid rgba(255,255,255,.05)}
+.stat{flex:1 1 0;padding:13px 6px;text-align:center;border-right:1px solid var(--hair)}
 .stat:last-child{border-right:none}
 .stat .n{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--amber);line-height:1.1}
 .stat .n.sm{font-size:15px}
@@ -418,11 +497,11 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 /* 设置弹窗 */
 #modal{
   position:fixed;inset:0;z-index:2100;display:none;place-items:center;padding:20px;
-  background:rgba(3,6,9,.72);backdrop-filter:blur(3px)
+  background:var(--backdrop);backdrop-filter:blur(3px)
 }
 #modal.on{display:grid}
 .modal-card{
-  width:min(400px,100%);background:rgba(10,15,20,.86);
+  width:min(400px,100%);background:var(--glass);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border:1px solid var(--line);border-radius:16px;padding:20px;
   box-shadow:0 24px 70px rgba(0,0,0,.7)
@@ -432,7 +511,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 .modal-card code{font-family:var(--mono);font-size:11px;color:var(--amber-soft)}
 .txt{
   width:100%;padding:10px;font-family:var(--mono);font-size:12px;
-  background:rgba(9,14,19,.95);border:1px solid rgba(255,255,255,.11);
+  background:var(--panel-solid);border:1px solid var(--chip-bd);
   border-radius:10px;color:var(--fg);outline:none;transition:border-color .18s cubic-bezier(.2,.7,.3,1)
 }
 .txt:focus{border-color:var(--amber-soft)}
@@ -447,7 +526,7 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
 }
 .toast{
   padding:10px 15px;border-radius:10px;font-size:12.5px;line-height:1.5;
-  background:rgba(10,15,20,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border:1px solid var(--line);color:var(--fg);
   box-shadow:0 10px 32px rgba(0,0,0,.6);
   animation:toastIn .3s ease;display:flex;align-items:center;gap:9px
@@ -507,6 +586,10 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
     <span class="hud-item">剩余满分 <b id="hud-max" class="mono">1000</b></span>
   </div>
   <div class="hud-right">
+    <button id="btn-theme" class="icon-btn" title="切换白天/黑夜主题" aria-label="切换主题">
+      <svg id="ico-moon" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="ico-sun" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
     <button id="btn-settings" class="icon-btn" title="设置" aria-label="设置">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
@@ -524,8 +607,10 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   </div>
   <div class="answer">
     <p class="answer-lbl">目标判定</p>
-    <select id="sel-prov" class="sel" aria-label="选择省份"><option value="">选择省份</option></select>
-    <select id="sel-city" class="sel" aria-label="选择城市" disabled><option value="">选择城市</option></select>
+    <button id="btn-pick" class="pick-btn" disabled>
+      <span class="ph">点击在地图上选择答案…</span>
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
     <div class="answer-btns">
       <button id="btn-submit" class="btn primary" disabled>提交答案</button>
       <button id="btn-skip" class="btn ghost" disabled>跳过</button>
@@ -613,26 +698,32 @@ path.hl-breathe{animation:hlBreathe 2.2s ease-in-out infinite}
   </div>
 </div>
 
+<!-- ===================== 地图选点弹层 ===================== -->
+<div id="picker">
+  <div class="picker-card">
+    <div class="picker-head">
+      <span class="t" id="picker-crumb">选择省份</span>
+      <button id="btn-pick-back" class="btn" style="display:none">← 返回选省</button>
+      <button id="btn-pick-close" class="icon-btn" title="关闭" aria-label="关闭">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="picker-map"></div>
+    <div id="picker-loading">数据加载中…</div>
+    <div class="picker-foot">
+      <span id="picker-sel">未选择</span>
+      <button id="btn-pick-ok" class="btn primary" disabled>确定</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== 扫描进度条 / toast ===================== -->
 <div class="scan" id="scan"></div>
 <div id="toast"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-/* 依赖兜底：主源不可用（离线 / 证书被拦截 / CDN 故障）时自动切换备用源。
-   Leaflet 与 Turf.js 版本保持与主源完全一致。 */
-(function () {
-  function dw(u) { document.write('<scr' + 'ipt src="' + u + '"><\/scr' + 'ipt>'); }
-  if (typeof window.L === 'undefined') dw('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js');
-})();
-</script>
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-<script>
-(function () {
-  function dw(u) { document.write('<scr' + 'ipt src="' + u + '"><\/scr' + 'ipt>'); }
-  if (typeof window.turf === 'undefined') dw('https://unpkg.com/@turf/turf@6/turf.min.js');
-})();
-</script>
+<!-- Leaflet / Turf.js 均由页尾 ensureDeps 异步多镜像加载（见 [E] 依赖加载），
+     不再用阻塞式 <script src> + document.write 兜底：主源（unpkg）在国内不可达时，
+     同步脚本会让文档解析卡住很久，表现为“双击打开特别慢”。 -->
 <script>
 "use strict";
 /* ============================================================================
@@ -653,6 +744,7 @@ var CONFIG = {
   /* 本地存储键名 */
   STATS_KEY: 'geoxun_stats_v1',
   AMAP_KEY_STORE: 'geoxun_amap_key_v1',
+  THEME_KEY: 'geoxun_theme_v1',
 
   /* 计分口径 E */
   MAX_SCORE: 1000,          // 满分基准
@@ -687,15 +779,17 @@ var CONFIG = {
   PROV_TRY_MAX: 8,          // 换省重试上限
   LANDING_TRIES: 200,       // 落点采样重试上限
   MASK_ANIM_MS: 600,        // 蒙版扩张动画时长
-  POI_RADIUS: 1000          // POI 搜索半径（米）
+  POI_RADIUS: 1000          // POI 检索半径下限（米），实际取落点圆半径
 };
 
 /* --- A.2 底图瓦片（高德 GCJ-02，均 256×256 已实测） ---------------------- */
 var TILES = {
   /* 卫星影像，无标注文字 */
   sat: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
-  /* 路网透明叠层，ltype=11 无文字 */
+  /* 路网透明叠层，ltype=11 纯道路线条、无文字 */
   road: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&ltype=11&x={x}&y={y}&z={z}',
+  /* 路名注记透明叠层：G101 等道路编号盾牌、高速/环路名等文字标注（与路网叠加使用） */
+  roadLabel: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&ltype=4&x={x}&y={y}&z={z}',
   subdomains: '1234'
 };
 
@@ -851,7 +945,9 @@ var state = {
   unlocked: {},        // { 2:true, ... } 已解锁等级（解锁后永久生效，开关不退款）
   deduction: 0,
   answer: null,        // 出题后写入：{ provCode, provName, cityName, coords, bbox, point }
-  cityCache: {},       // provCode -> GeoJSON（供市下拉与重绘）
+  pick: null,          // 玩家在选点地图确认的答案：{ provCode, cityName, hasCityList }
+  cityCache: {},       // provCode -> GeoJSON（供选市地图与重绘）
+  pickerChinaGj: null, // 全国省界缓存（选点地图与 Lv.5 共用）
   map: null,
   centerLatLng: null,  // 落点圆心（Leaflet LatLng）
   baseRadius: 0,       // 初始地理半径（米）
@@ -1015,18 +1111,6 @@ function shuffle(a) {
   return a;
 }
 
-/* 市下拉选项：直辖市/港澳按口径 A 只有一项（整市） */
-function cityNames(gj, provCode) {
-  if (MUNICIPALITIES[provCode]) return [provName(provCode)];
-  var names = [];
-  for (var i = 0; i < gj.features.length; i++) {
-    var n = gj.features[i] && gj.features[i].properties && gj.features[i].properties.name;
-    if (n && names.indexOf(n) < 0) names.push(n);
-  }
-  names.sort(function (a, b) { return a.localeCompare(b, 'zh-Hans-CN'); });
-  return names;
-}
-
 /* 由省表 + GeoJSON 组装一道题的答案对象（名称只进 JS 变量，绝不进 DOM） */
 function buildAnswer(prov, gj) {
   var isMuni = !!MUNICIPALITIES[prov.code];
@@ -1062,8 +1146,7 @@ function buildAnswer(prov, gj) {
     bbox: bbox,
     point: pt,          // [lng, lat]
     radius: R,
-    isMuni: isMuni,
-    cities: cityNames(gj, prov.code)
+    isMuni: isMuni
   };
 }
 
@@ -1359,7 +1442,11 @@ var POI_INFOCODE = {
   '10020': '高德 Key 被禁用（10020）',
   '10021': '高德 Key 今日配额已用完（10021）'
 };
-function amapAround(lng, lat, key) {
+/* 参检 POI 类别：餐饮/购物/生活服务/体育休闲/医疗/住宿/风景名胜/商务住宅/
+   科教文化/交通设施/金融/公司企业/道路附属/公共设施。排除 190000 地名地址类
+   （多为门牌噪声），行政区划在下方 isAdmin 里再过滤一道。 */
+var POI_TYPES = '050000|060000|070000|080000|090000|100000|110000|120000|140000|150000|160000|170000|180000|200000';
+function amapAround(lng, lat, key, radius, page) {
   return new Promise(function (resolve, reject) {
     var cb = 'geoxun_cb_' + Math.floor(Math.random() * 1e9);
     var s = document.createElement('script');
@@ -1376,9 +1463,10 @@ function amapAround(lng, lat, key) {
     s.onerror = function () { finish(new Error('network')); };
     s.src = 'https://restapi.amap.com/v3/place/around?key=' + encodeURIComponent(key) +
             '&location=' + lng.toFixed(6) + ',' + lat.toFixed(6) +
-            '&radius=' + CONFIG.POI_RADIUS +
-            '&types=' + encodeURIComponent('050000|060000|070000|080000') +
-            '&offset=10&page=1&extensions=base&callback=' + cb;
+            '&radius=' + Math.round(radius) +
+            '&types=' + encodeURIComponent(POI_TYPES) +
+            '&offset=25&page=' + (page || 1) +
+            '&sortrule=distance&extensions=base&callback=' + cb;
     document.head.appendChild(s);
   });
 }
@@ -1391,40 +1479,75 @@ var POICtl = {
     if (typecode && String(typecode).indexOf('1901') === 0) return true;
     return /^.{2,10}(省|市|区|县|镇|乡|街道|自治区|自治州|自治县|盟|旗)$/.test(name || '');
   },
+  /* centerLngLat 必须是本回合落点圆心 [lng,lat]（口径：POI 只在圆内出现） */
   render: function (centerLngLat, done) {
     var key = Store.readKey();
     if (!key) { if (done) done('nokey'); return; }
-    amapAround(centerLngLat[0], centerLngLat[1], key).then(function (data) {
-      if (!data || data.status !== '1') {
-        var code = data && data.infocode;
-        UI.toast(POI_INFOCODE[code] || ('高德返回错误：' + (data && data.info) + '（' + code + '）'), 'err', 6500);
+    /* 检索半径 = 落点圆半径，覆盖整个圆；结果再按「距圆心 ≤ R」过滤，
+       保证命中的 POI 一定画在蒙版洞（即圆）内、看得见。
+       单中心 + 按距离排序的结果天然聚在圆心附近；改为圆心 + 正东/南/西/北
+       0.55R 共 5 个检索点（每点取最近 25 条），合并过滤后可铺满整圆。 */
+    var R = (state.answer && state.answer.radius) ? state.answer.radius : CONFIG.POI_RADIUS;
+    R = clamp(R, CONFIG.POI_RADIUS, 50000);   // 高德周边搜索半径上限 50km
+    var centers = [centerLngLat];
+    for (var b = 0; b < 360; b += 90) {
+      try {
+        var rc = turf.destination(turf.point(centerLngLat), R * 0.55, b, { units: 'meters' });
+        centers.push(rc.geometry.coordinates);
+      } catch (e) { /* 忽略，中心点兜底 */ }
+    }
+    Promise.all(centers.map(function (cc) {
+      return amapAround(cc[0], cc[1], key, R, 1)
+        .catch(function () { return null; });     // 某一检索点失败不影响其余
+    })).then(function (rs) {
+      var code = null, ok = 0, all = [];
+      for (var k = 0; k < rs.length; k++) {
+        var d = rs[k];
+        if (!d) continue;
+        if (d.status !== '1') { if (!code) code = d.infocode; continue; }
+        ok++;
+        if (d.pois && d.pois.length) all = all.concat(d.pois);
+      }
+      if (!ok) {
+        UI.toast(POI_INFOCODE[code] || ('高德返回错误（' + code + '）'), 'err', 6500);
         if (done) done('error');
         return;
       }
-      var pois = (data.pois || []).filter(function (p) {
-        return p && p.name && p.location && !POICtl.isAdmin(p.name, p.typecode);
-      });
-      if (!pois.length) {
-        UI.toast('该点周边未检索到有效 POI', 'warn');
+      var c = turf.point(centerLngLat), seen = {}, out = [];
+      for (var i = 0; i < all.length; i++) {
+        var p = all[i];
+        if (!p || !p.name || !p.location) continue;
+        if (POICtl.isAdmin(p.name, p.typecode)) continue;
+        var loc = String(p.location).split(',');
+        var lng = parseFloat(loc[0]), lat = parseFloat(loc[1]);
+        if (!isFinite(lng) || !isFinite(lat)) continue;
+        var d2;
+        try { d2 = turf.distance(c, turf.point([lng, lat]), { units: 'meters' }); } catch (e) { continue; }
+        if (!(d2 <= R)) continue;                    // 圆外一律不画（提示数=画出数）
+        var k2 = p.name + '@' + lng.toFixed(4) + ',' + lat.toFixed(4);
+        if (seen[k2]) continue; seen[k2] = 1;
+        out.push({ name: p.name, lng: lng, lat: lat, d: d2 });
+      }
+      out.sort(function (a, b) { return a.d - b.d; });
+      if (out.length > 30) out.length = 30;
+      if (!out.length) {
+        UI.toast('圆内未检索到有效 POI', 'warn');
         if (done) done('empty');
         return;
       }
       var grp = L.layerGroup();
-      for (var i = 0; i < pois.length; i++) {
-        var loc = String(pois[i].location).split(',');
-        var lng = parseFloat(loc[0]), lat = parseFloat(loc[1]);
-        if (!isFinite(lng) || !isFinite(lat)) continue;
+      for (var j = 0; j < out.length; j++) {
         // GCJ-02 与底图同系，直接渲染，不做纠偏
-        L.circleMarker([lat, lng], {
+        L.circleMarker([out[j].lat, out[j].lng], {
           radius: 4, color: '#F0A63A', weight: 1.4,
           fillColor: '#F0A63A', fillOpacity: .5, interactive: false
-        }).bindTooltip(pois[i].name, {
+        }).bindTooltip(out[j].name, {
           className: 'poi-tip', permanent: true, direction: 'top', offset: [0, -4], opacity: 1
         }).addTo(grp);
       }
       POICtl.clear();
       state.layers.poi = grp.addTo(state.map);
-      UI.toast('已获取 ' + pois.length + ' 个周边兴趣点', 'ok', 2600);
+      UI.toast('已标注圆内 ' + out.length + ' 个兴趣点（检索半径 ' + (R / 1000).toFixed(1) + 'km）', 'ok', 2600);
       if (done) done('ok');
     }).catch(function () {
       UI.toast('周边检索请求失败，请检查网络后重试', 'err');
@@ -1471,18 +1594,27 @@ var MapCtl = {
     return map;
   },
 
-  /* Lv.2：路网叠层（透明底、无文字） */
+  /* Lv.2：路网 + 路名标注双层叠层（均透明底） */
   addRoad: function () {
     if (state.layers.road) return state.layers.road;
-    state.layers.road = L.tileLayer(TILES.road, {
-      subdomains: TILES.subdomains, tileSize: 256, minZoom: 3, maxZoom: 18,
-      opacity: 0.85, keepBuffer: 2, zIndex: 3
-    });
-    state.layers.road.on('tileerror', function () { UI.toast('路网图层加载失败，请检查网络后重试', 'err'); });
+    function mk(url, zIndex, errTip) {
+      var l = L.tileLayer(url, {
+        subdomains: TILES.subdomains, tileSize: 256, minZoom: 3, maxZoom: 18,
+        opacity: 0.85, keepBuffer: 2, zIndex: zIndex
+      });
+      l.on('tileerror', function () { UI.toast(errTip, 'err'); });
+      return l;
+    }
+    state.layers.road = L.layerGroup([
+      mk(TILES.road, 3, '路网图层加载失败，请检查网络后重试'),
+      mk(TILES.roadLabel, 4, '路名标注图层加载失败，请检查网络后重试')
+    ]);
     return state.layers.road;
   },
   setRoadOpacity: function (v) {
-    if (state.layers.road) state.layers.road.setOpacity(v);
+    if (state.layers.road) {
+      state.layers.road.eachLayer(function (l) { l.setOpacity(v); });
+    }
   },
   /* 由 R 反算初始缩放：让圆的屏幕半径 ≈ 视口短边的 38%。
      zoomSnap:0 后为连续缩放：直接取对数精确解并向下保留 1 位小数，
@@ -1606,7 +1738,7 @@ var Hint = {
     if (level === 1) {
       b.appendChild(mkEl('div', 'hint-note', '卫星影像为唯一底图，初始已开启，不计扣分。'));
     } else if (level === 2) {
-      b.appendChild(mkEl('div', 'hint-note', '叠加高德路网透明层（无文字标注），可调透明度。'));
+      b.appendChild(mkEl('div', 'hint-note', '叠加高德路网与路名标注（G101、高速名等），可调透明度。'));
       var row = mkEl('div', 'slider-row');
       var rng = document.createElement('input');
       rng.type = 'range'; rng.min = '0'; rng.max = '100'; rng.value = '85';
@@ -1637,7 +1769,7 @@ var Hint = {
     if (!rec || !rec.note) return;
     var has = !!Store.readKey();
     rec.note.textContent = has
-      ? '已配置 Key，开启后在落点周边 1km 检索餐饮 / 购物 / 生活服务 / 医疗兴趣点。'
+      ? '已配置 Key，开启后以落点为圆心检索圆内兴趣点（餐饮 / 购物 / 住宿 / 风景名胜等，按距离排序）。'
       : '需配置高德 Web服务 Key 后方可使用（点击本行打开设置）。';
     rec.note.className = 'hint-note' + (has ? '' : ' warn');
   },
@@ -1705,7 +1837,7 @@ var Hint = {
       if (rec.range) { rec.range.value = '85'; if (rec.rangeVal) rec.rangeVal.textContent = '85%'; }
     }
     var r2 = this.rows[2]; if (r2) r2.root.classList.remove('on');
-    if (state.layers.road) state.layers.road.setOpacity(0.85);
+    if (state.layers.road) MapCtl.setRoadOpacity(0.85);
 
     this.refreshKey();
     this.refreshAvailability();
@@ -1732,8 +1864,9 @@ function applyHint(level, on) {
     if (on) {
       if (!Store.readKey()) { UI.toast('需配置高德 Web服务 Key', 'warn'); Settings.open(); return; }
       UI.status('检索周边…');
-      // 在落点附近取一个陆地上的随机点作为检索中心
-      var pt = pickLandingPoint(state.answer.coords) || state.answer.point;
+      // 检索中心 = 本回合落点圆心：保证 POI 都落在圆内
+      //（此前误用市内随机点，检索结果常在圆外，蒙版下看不见）
+      var pt = state.answer.point;
       POICtl.render(pt, function (r) { UI.status(r === 'ok' ? '周边情报已加载' : '待命'); });
     } else {
       POICtl.clear();
@@ -1892,28 +2025,10 @@ var Settings = {
   }
 };
 
-/* --- E.3 作答区 ---------------------------------------------------------- */
-function placeholderOpt(t) {
-  var o = document.createElement('option');
-  o.value = ''; o.textContent = t;
-  return o;
-}
-function fillProvinceSelect() {
-  var sel = $('sel-prov');
-  sel.innerHTML = '';
-  sel.appendChild(placeholderOpt('选择省份'));
-  for (var i = 0; i < PROVINCES.length; i++) {
-    var o = document.createElement('option');
-    o.value = PROVINCES[i].code;
-    o.textContent = PROVINCES[i].name;   // 34 省全量，不含答案信息
-    sel.appendChild(o);
-  }
-}
+/* --- E.3 作答区（地图选点：省 → 市两步） --------------------------------- */
 function updateSubmit() {
-  var pc = $('sel-prov').value;
-  var hasCityList = !$('sel-city').disabled;
-  var cn = $('sel-city').value;
-  var ok = !!pc && (!hasCityList || !!cn);
+  var p = state.pick;
+  var ok = !!p && !!p.provCode && (!p.hasCityList || !!p.cityName);
   var btn = $('btn-submit');
   var wasReady = !btn.disabled;
   btn.disabled = !ok || state.answered || state.busy;
@@ -1927,56 +2042,188 @@ function updateSubmit() {
   }
 }
 function setAnswerEnabled(on) {
-  $('sel-prov').disabled = !on;
+  $('btn-pick').disabled = !on;
   $('btn-skip').disabled = !on;
-  if (!on) { $('sel-city').disabled = true; $('btn-submit').disabled = true; }
+  if (!on) $('btn-submit').disabled = true;
   else updateSubmit();
 }
 function resetAnswerUI() {
-  $('sel-prov').value = '';
-  var cs = $('sel-city');
-  cs.innerHTML = ''; cs.appendChild(placeholderOpt('选择城市')); cs.disabled = true;
-  state.cityListAvailable = false;
+  state.pick = null;
+  var ph = $('btn-pick').querySelector('.ph');
+  if (ph) { ph.textContent = '点击在地图上选择答案…'; ph.style.color = ''; }
   setAnswerEnabled(false);
 }
-/* 省份 → 联动城市下拉（选项来自已缓存的该省 JSON） */
-function onProvChange() {
-  var code = $('sel-prov').value;
-  var cs = $('sel-city');
-  cs.innerHTML = '';
-  if (!code) {
-    cs.appendChild(placeholderOpt('选择城市'));
-    cs.disabled = true; state.cityListAvailable = false; updateSubmit(); return;
-  }
-  cs.disabled = true;
-  cs.appendChild(placeholderOpt('加载中…'));
-  state.cityListAvailable = false;
-  updateSubmit();
 
-  loadProvince(code).then(function (gj) {
-    if ($('sel-prov').value !== code) return;   // 用户已切换
-    var names = cityNames(gj, code);
-    cs.innerHTML = '';
-    cs.appendChild(placeholderOpt('选择城市'));
-    for (var i = 0; i < names.length; i++) {
-      var o = document.createElement('option');
-      o.value = names[i]; o.textContent = names[i];
-      cs.appendChild(o);
-    }
-    cs.disabled = false;
-    state.cityListAvailable = true;
+/* 浅色矢量选图样式（白底 + 浅绿灰省市面 + 白界线，类似无注记的标准底图） */
+var PICK_STYLE = {
+  provFill: '#E3EBDD', provHover: '#C9DEC0', provSel: '#F3C878',
+  cityFill: '#E6EDE2', cityHover: '#CBDFC2', citySel: '#F3C878',
+  border: '#FFFFFF'
+};
+var Pick = {
+  map: null,
+  chinaLayer: null, cityLayer: null,
+  selProvLayer: null, selCityLayer: null,
+  step: 'prov',
+  prov: null,          // {code, name}
+  city: null,          // 城市名（直辖市 = 省名）
+  hasCityList: false,
+
+  ensureMap: function () {
+    if (this.map) return;
+    var m = L.map('picker-map', {
+      zoomControl: false, attributionControl: false,
+      zoomSnap: 0.5, minZoom: 3, maxZoom: 12
+    });
+    L.control.zoom({ position: 'bottomright' }).addTo(m);
+    this.map = m;
+  },
+  open: function () {
+    if (state.answered || state.busy || !state.answer) return;
+    $('picker').classList.add('on');
+    this.ensureMap();
+    var self = this;
+    setTimeout(function () { self.map.invalidateSize(); self.showChina(); }, 60);
+  },
+  close: function () { $('picker').classList.remove('on'); },
+  loading: function (on) { $('picker-loading').classList.toggle('on', !!on); },
+  /* 全国省界：与 Lv.5 共用缓存，避免重复下载 */
+  chinaGj: function () {
+    if (state.lv5Gj) return Promise.resolve(state.lv5Gj);
+    if (state.pickerChinaGj) return Promise.resolve(state.pickerChinaGj);
+    var self = this;
+    return fetchJSON(CONFIG.DATA_BASE + CONFIG.CHINA_CODE + '_full.json', 25000).then(function (g) {
+      state.pickerChinaGj = g;
+      return g;
+    }).catch(function (e) { self.loading(false); throw e; });
+  },
+  clearLayers: function () {
+    if (this.cityLayer) { this.map.removeLayer(this.cityLayer); this.cityLayer = null; }
+    if (this.chinaLayer) { this.map.removeLayer(this.chinaLayer); this.chinaLayer = null; }
+    this.selProvLayer = null; this.selCityLayer = null;
+  },
+  /* 第一步：全国省份点击选省 */
+  showChina: function () {
+    var self = this;
+    this.step = 'prov';
+    this.prov = null; this.city = null; this.hasCityList = false;
+    $('picker-crumb').textContent = '选择省份';
+    $('btn-pick-back').style.display = 'none';
+    $('picker-sel').textContent = '未选择';
+    $('btn-pick-ok').disabled = true;
+    this.clearLayers();
+    this.loading(true);
+    this.chinaGj().then(function (gj) {
+      if (!$('picker').classList.contains('on')) return;   // 弹层已关闭
+      self.loading(false);
+      self.chinaLayer = L.geoJSON(gj, {
+        interactive: true,
+        style: function () {
+          return { fillColor: PICK_STYLE.provFill, fillOpacity: .92, color: PICK_STYLE.border, weight: 1 };
+        },
+        onEachFeature: function (f, layer) {
+          layer.on('mouseover', function () {
+            if (layer !== self.selProvLayer) layer.setStyle({ fillColor: PICK_STYLE.provHover });
+          });
+          layer.on('mouseout', function () {
+            if (layer !== self.selProvLayer) layer.setStyle({ fillColor: PICK_STYLE.provFill });
+          });
+          layer.on('click', function () { self.selectProv(f, layer); });
+        }
+      }).addTo(self.map);
+      try { self.map.fitBounds(self.chinaLayer.getBounds(), { padding: [8, 8] }); } catch (e) {}
+    }).catch(function () {
+      if (!$('picker').classList.contains('on')) return;
+      self.loading(false);
+      UI.toast('省界数据加载失败，请检查网络后重试', 'err');
+    });
+  },
+  /* 第二步：省内市域点击选市（动画缩放进省） */
+  selectProv: function (f, layer) {
+    if (!f.properties || !f.properties.adcode) return;
+    var self = this;
+    var code = String(f.properties.adcode);
+    var name = f.properties.name || provName(code);
+    this.prov = { code: code, name: name };
+    this.city = null; this.hasCityList = false;
+    if (this.selProvLayer && this.selProvLayer !== layer) this.selProvLayer.setStyle({ fillColor: PICK_STYLE.provFill });
+    this.selProvLayer = layer;
+    layer.setStyle({ fillColor: PICK_STYLE.provSel });
+    try { this.map.flyToBounds(layer.getBounds(), { padding: [14, 14], duration: 0.8 }); } catch (e) {}
+    $('picker-crumb').textContent = name + ' · 加载市域…';
+    $('picker-sel').textContent = '已选省份：' + name;
+    $('btn-pick-ok').disabled = true;
+    this.loading(true);
+    loadProvince(code).then(function (gj) {
+      if (!self.prov || self.prov.code !== code) return;  // 用户已返回/改选
+      self.loading(false);
+      self.showCity(gj, code);
+    }).catch(function () {
+      if (!self.prov || self.prov.code !== code) return;
+      self.loading(false);
+      // 该省无市列表（如台湾 404）→ 仅凭省份判定
+      self.step = 'city';
+      self.hasCityList = false; self.city = null;
+      self.clearLayers();
+      $('picker-crumb').textContent = name + ' · 暂无城市列表';
+      $('btn-pick-back').style.display = '';
+      $('picker-sel').innerHTML = '该省暂无城市列表，将只判定省份：<b>' + name + '</b>';
+      $('btn-pick-ok').disabled = false;
+      UI.toast('该省份的城市列表不可用，将只判定省份', 'warn');
+    });
+  },
+  showCity: function (gj, code) {
+    var self = this;
+    this.step = 'city';
+    $('btn-pick-back').style.display = '';
+    var muni = !!MUNICIPALITIES[code];
+    $('picker-crumb').textContent = muni ? this.prov.name : (this.prov.name + ' · 选择城市');
+    if (this.chinaLayer) { this.map.removeLayer(this.chinaLayer); this.chinaLayer = null; this.selProvLayer = null; }
+    if (this.cityLayer) { this.map.removeLayer(this.cityLayer); this.cityLayer = null; }
+    this.selCityLayer = null;
+    this.cityLayer = L.geoJSON(gj, {
+      interactive: true,
+      style: function () {
+        return { fillColor: PICK_STYLE.cityFill, fillOpacity: .92, color: PICK_STYLE.border, weight: 1 };
+      },
+      onEachFeature: function (f, layer) {
+        layer.on('mouseover', function () {
+          if (layer !== self.selCityLayer) layer.setStyle({ fillColor: PICK_STYLE.cityHover });
+        });
+        layer.on('mouseout', function () {
+          if (layer !== self.selCityLayer) layer.setStyle({ fillColor: PICK_STYLE.cityFill });
+        });
+        layer.on('click', function () {
+          // 直辖市/港澳（口径 A）：整市为一个答案，点任意区都选全省名
+          var cname = muni ? self.prov.name : (f.properties && f.properties.name);
+          if (!cname) return;
+          self.city = cname; self.hasCityList = true;
+          if (self.selCityLayer && self.selCityLayer !== layer) self.selCityLayer.setStyle({ fillColor: PICK_STYLE.cityFill });
+          self.selCityLayer = layer;
+          layer.setStyle({ fillColor: PICK_STYLE.citySel });
+          $('picker-sel').innerHTML = '已选：<b>' + self.prov.name + '</b> · <b>' + cname + '</b>';
+          $('btn-pick-ok').disabled = false;
+        });
+      }
+    }).addTo(this.map);
+    try { this.map.fitBounds(this.cityLayer.getBounds(), { padding: [10, 10] }); } catch (e) {}
+    if (muni) $('picker-sel').innerHTML = '直辖市/特区：点击市域任意位置选定 <b>' + this.prov.name + '</b>';
+  },
+  confirm: function () {
+    if (!this.prov) return;
+    if (this.hasCityList && !this.city) return;
+    state.pick = {
+      provCode: this.prov.code,
+      cityName: this.hasCityList ? this.city : '',
+      hasCityList: this.hasCityList
+    };
+    var label = this.prov.name + (this.hasCityList && this.city ? ' · ' + this.city : '');
+    var ph = $('btn-pick').querySelector('.ph');
+    if (ph) ph.textContent = label;
+    this.close();
     updateSubmit();
-  }).catch(function () {
-    // 该省无市列表（如台湾 404）→ 仅凭省份判定
-    if ($('sel-prov').value !== code) return;
-    cs.innerHTML = '';
-    cs.appendChild(placeholderOpt('该省暂无城市列表'));
-    cs.disabled = true;
-    state.cityListAvailable = false;
-    UI.toast('该省份的城市列表不可用，将只判定省份', 'warn');
-    updateSubmit();
-  });
-}
+  }
+};
 
 /* --- E.4 揭晓面板 -------------------------------------------------------- */
 function replayAnim(el) {
@@ -2119,9 +2366,11 @@ function nextRound() {
 function submitAnswer() {
   if (state.busy || state.answered || !state.answer) return;
   var a = state.answer;
-  var pc = $('sel-prov').value;
-  var hasCityList = state.cityListAvailable;
-  var cn = hasCityList ? $('sel-city').value : '';
+  var p = state.pick;
+  if (!p || !p.provCode) return;
+  var pc = p.provCode;
+  var hasCityList = p.hasCityList;
+  var cn = p.cityName;
 
   var provOk = (pc === a.provCode);
   // 城市列表不可用时（如台湾），只要省份正确即视为城市正确
@@ -2202,6 +2451,19 @@ function playRadar(done) {
 }
 
 /* --- E.7 事件绑定与启动 -------------------------------------------------- */
+/* 白天/黑夜主题（默认黑夜；蒙版白天用浅雾色，面板与文字整体反转） */
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  var day = (t === 'day');
+  var moon = $('ico-moon'), sun = $('ico-sun');
+  if (moon) moon.style.display = day ? 'none' : '';
+  if (sun) sun.style.display = day ? '' : 'none';
+}
+function initTheme() {
+  var saved = '';
+  try { saved = localStorage.getItem(CONFIG.THEME_KEY) || ''; } catch (e) {}
+  applyTheme(saved === 'day' ? 'day' : 'night');
+}
 function bindEvents() {
   $('btn-start').addEventListener('click', function () {
     $('title').classList.add('hide');
@@ -2222,15 +2484,24 @@ function bindEvents() {
   $('modal').addEventListener('click', function (ev) { if (ev.target === $('modal')) Settings.close(); });
   $('key-input').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') Settings.save(); });
 
-  $('sel-prov').addEventListener('change', onProvChange);
-  $('sel-city').addEventListener('change', updateSubmit);
+  $('btn-pick').addEventListener('click', function () { Pick.open(); });
+  $('btn-pick-close').addEventListener('click', function () { Pick.close(); });
+  $('btn-pick-back').addEventListener('click', function () { Pick.showChina(); });
+  $('btn-pick-ok').addEventListener('click', function () { Pick.confirm(); });
+  $('picker').addEventListener('click', function (ev) { if (ev.target === $('picker')) Pick.close(); });
+  $('btn-theme').addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
+    var next = (cur === 'day') ? 'night' : 'day';
+    applyTheme(next);
+    try { localStorage.setItem(CONFIG.THEME_KEY, next); } catch (e) {}
+  });
   $('btn-submit').addEventListener('click', submitAnswer);
   $('btn-skip').addEventListener('click', skipAnswer);
   $('btn-next').addEventListener('click', function () { nextRound(); });
 
   $('drawer-toggle').addEventListener('click', function () { $('intel').classList.toggle('open'); });
   document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') Settings.close();
+    if (ev.key === 'Escape') { Pick.close(); Settings.close(); }
   });
   // 移动端：选中下拉时不触发抽屉收起
   $('intel').addEventListener('touchstart', function (ev) { ev.stopPropagation(); }, { passive: true });
@@ -2239,33 +2510,56 @@ function bindEvents() {
   if (window.innerWidth <= 900) $('intel').classList.remove('open');
 }
 
-/* 依赖加载（CDN 兜底，第二层）
-   外链 <script> 整条失败时脚本体不会执行，window.L 保持 undefined，
-   不存在「Leaflet 半初始化」的中间态。但若浏览器拦截 document.write 注入的
-   脚本（如 Chrome 在慢网络下的干预），文档流里的兜底就会落空。
-   因此这里再补一层异步兜底：缺哪个就从备用源按序补齐，补齐后统一启动。 */
-function loadScript(url) {
+/* 依赖加载（异步多镜像，按序尝试 + 单源超时）
+   全部异步注入，不阻塞 HTML 解析：国内访问 unpkg / Google Fonts 常被黑洞，
+   同步外链会让文档卡住很久（“双击打开特别慢”的主因）。
+   每个库给一组镜像：国内镜像优先，单源超时/失败即切下一个，全部失败才报错。 */
+var DEP_URLS = {
+  leaflet: [
+    'https://registry.npmmirror.com/leaflet/1.9.4/files/dist/leaflet.js',
+    'https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+    'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+  ],
+  turf: [
+    'https://registry.npmmirror.com/@turf/turf/6.5.0/files/turf.min.js',
+    'https://cdn.bootcdn.net/ajax/libs/Turf.js/6.5.0/turf.min.js',
+    'https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js',
+    'https://unpkg.com/@turf/turf@6/turf.min.js'
+  ]
+};
+function loadScript(url, timeoutMs) {
   return new Promise(function (resolve) {
     var s = document.createElement('script');
+    var settled = false;
+    var timer = setTimeout(function () { finish(false); }, timeoutMs || 7000);
+    function finish(ok) {
+      if (settled) return; settled = true;
+      clearTimeout(timer);
+      if (!ok && s.parentNode) s.parentNode.removeChild(s);  // 超时的慢源直接丢弃
+      resolve(ok);
+    }
     s.src = url;
-    s.onload = function () { resolve(true); };
-    s.onerror = function () { resolve(false); };
+    s.onload = function () { finish(true); };
+    s.onerror = function () { finish(false); };
     document.head.appendChild(s);
   });
 }
+function loadFirst(urls) {
+  var i = 0;
+  function next() {
+    if (i >= urls.length) return Promise.resolve(false);
+    return loadScript(urls[i++], 7000).then(function (ok) {
+      return ok ? true : next();
+    });
+  }
+  return next();
+}
 function ensureDeps(cb) {
-  var needL = (typeof L === 'undefined');
-  var needT = (typeof turf === 'undefined');
-  if (!needL && !needT) { cb(true); return; }
   var jobs = [];
-  if (needL) {
-    jobs.push(loadScript('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js')
-      .then(function (ok) { return ok || loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'); }));
-  }
-  if (needT) {
-    jobs.push(loadScript('https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js')
-      .then(function (ok) { return ok || loadScript('https://unpkg.com/@turf/turf@6/turf.min.js'); }));
-  }
+  if (typeof L === 'undefined') jobs.push(loadFirst(DEP_URLS.leaflet));
+  if (typeof turf === 'undefined') jobs.push(loadFirst(DEP_URLS.turf));
+  if (!jobs.length) { cb(true); return; }
   Promise.all(jobs).then(function () {
     cb(typeof L !== 'undefined' && typeof turf !== 'undefined');
   });
@@ -2291,7 +2585,6 @@ function boot() {
 
     MapCtl.init();
     Hint.build();
-    fillProvinceSelect();
     resetAnswerUI();
     bindEvents();
 
@@ -2302,6 +2595,7 @@ function boot() {
 }
 
 boot();
+initTheme();   // 主题尽早应用，不依赖 Leaflet/Turf 加载完成
 })();
 </script>
 </body>
